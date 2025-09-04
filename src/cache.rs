@@ -91,16 +91,22 @@ mod tests {
     use super::*;
     use std::env;
 
-    fn with_env<F>(key: &str, value: &str, f: F) 
+    fn with_env<F>(key: &str, value: &str, f: F)
     where
         F: FnOnce(),
     {
         let old_value = env::var(key).ok();
-        unsafe { env::set_var(key, value); }
+        unsafe {
+            env::set_var(key, value);
+        }
         f();
         match old_value {
-            Some(v) => unsafe { env::set_var(key, v); },
-            None => unsafe { env::remove_var(key); },
+            Some(v) => unsafe {
+                env::set_var(key, v);
+            },
+            None => unsafe {
+                env::remove_var(key);
+            },
         }
     }
 
@@ -118,13 +124,17 @@ mod tests {
     fn test_is_cache_default() {
         // Remove any existing cache env var for clean test
         let old_value = env::var("RUSTOWL_CACHE").ok();
-        unsafe { env::remove_var("RUSTOWL_CACHE"); }
-        
+        unsafe {
+            env::remove_var("RUSTOWL_CACHE");
+        }
+
         assert!(is_cache()); // Should be true by default
-        
+
         // Restore old value
         if let Some(v) = old_value {
-            unsafe { env::set_var("RUSTOWL_CACHE", v); }
+            unsafe {
+                env::set_var("RUSTOWL_CACHE", v);
+            }
         }
     }
 
@@ -170,7 +180,9 @@ mod tests {
     fn test_get_cache_path() {
         // Test with no env var
         let old_value = env::var("RUSTOWL_CACHE_DIR").ok();
-        unsafe { env::remove_var("RUSTOWL_CACHE_DIR"); }
+        unsafe {
+            env::remove_var("RUSTOWL_CACHE_DIR");
+        }
         assert!(get_cache_path().is_none());
 
         // Test with empty value
@@ -197,21 +209,23 @@ mod tests {
 
         // Restore old value
         if let Some(v) = old_value {
-            unsafe { env::set_var("RUSTOWL_CACHE_DIR", v); }
+            unsafe {
+                env::set_var("RUSTOWL_CACHE_DIR", v);
+            }
         }
     }
 
     #[test]
     fn test_set_cache_path() {
         use tokio::process::Command;
-        
+
         let mut cmd = Command::new("echo");
         let target_dir = PathBuf::from("/tmp/test_target");
-        
+
         set_cache_path(&mut cmd, &target_dir);
-        
+
         // Note: We can't easily test that the env var was set on the Command
-        // since that's internal to tokio::process::Command, but we can test 
+        // since that's internal to tokio::process::Command, but we can test
         // that the function doesn't panic and accepts the expected types
         let expected_cache_dir = target_dir.join("cache");
         assert_eq!(expected_cache_dir, PathBuf::from("/tmp/test_target/cache"));
@@ -238,11 +252,15 @@ mod tests {
         });
 
         // Test max memory with overflow protection
-        with_env("RUSTOWL_CACHE_MAX_MEMORY_MB", &usize::MAX.to_string(), || {
-            let config = get_cache_config();
-            // Should use saturating_mul, so might be different from exact calculation
-            assert!(config.max_memory_bytes > 0);
-        });
+        with_env(
+            "RUSTOWL_CACHE_MAX_MEMORY_MB",
+            &usize::MAX.to_string(),
+            || {
+                let config = get_cache_config();
+                // Should use saturating_mul, so might be different from exact calculation
+                assert!(config.max_memory_bytes > 0);
+            },
+        );
 
         // Test eviction policy configuration
         with_env("RUSTOWL_CACHE_EVICTION", "lru", || {

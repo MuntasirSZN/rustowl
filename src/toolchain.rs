@@ -319,7 +319,7 @@ mod tests {
     fn test_sysroot_from_runtime() {
         let runtime = PathBuf::from("/opt/test-runtime");
         let sysroot = sysroot_from_runtime(&runtime);
-        
+
         let expected = runtime.join("sysroot").join(TOOLCHAIN);
         assert_eq!(sysroot, expected);
     }
@@ -348,10 +348,14 @@ mod tests {
         assert!(!TOOLCHAIN.is_empty());
         assert!(!HOST_TUPLE.is_empty());
         assert!(!TOOLCHAIN_CHANNEL.is_empty());
-        
+
         // These should be reasonable values
-        assert!(TOOLCHAIN_CHANNEL == "nightly" || TOOLCHAIN_CHANNEL == "stable" || TOOLCHAIN_CHANNEL == "beta");
-        
+        assert!(
+            TOOLCHAIN_CHANNEL == "nightly"
+                || TOOLCHAIN_CHANNEL == "stable"
+                || TOOLCHAIN_CHANNEL == "beta"
+        );
+
         // Host tuple should contain some expected patterns
         assert!(HOST_TUPLE.contains('-'));
     }
@@ -376,23 +380,23 @@ mod tests {
     fn test_set_rustc_env() {
         let mut command = tokio::process::Command::new("echo");
         let sysroot = PathBuf::from("/test/sysroot");
-        
+
         set_rustc_env(&mut command, &sysroot);
-        
+
         // We can't easily inspect the environment variables set on the command,
         // but we can verify the function doesn't panic and accepts the expected types
         // The actual functionality requires process execution which we avoid in unit tests
     }
 
-    #[test] 
+    #[test]
     fn test_sysroot_path_construction() {
         // Test edge cases for path construction
         let empty_path = PathBuf::new();
         let sysroot = sysroot_from_runtime(&empty_path);
-        
+
         // Should still construct a valid path
         assert_eq!(sysroot, PathBuf::from("sysroot").join(TOOLCHAIN));
-        
+
         // Test with root path
         let root_path = PathBuf::from("/");
         let sysroot = sysroot_from_runtime(&root_path);
@@ -408,7 +412,7 @@ mod tests {
                 assert!(!date.is_empty());
                 // Date should be in YYYY-MM-DD format if present
                 assert!(date.len() >= 10);
-            },
+            }
             None => {
                 // This is fine, toolchain date is optional
             }
@@ -420,12 +424,12 @@ mod tests {
         // Test the URL construction logic that would be used in install_component
         let component = "rustc";
         let component_toolchain = format!("{component}-{TOOLCHAIN_CHANNEL}-{HOST_TUPLE}");
-        
+
         // Should contain all the parts
         assert!(component_toolchain.contains(component));
         assert!(component_toolchain.contains(TOOLCHAIN_CHANNEL));
         assert!(component_toolchain.contains(HOST_TUPLE));
-        
+
         // Should be properly formatted with dashes
         let parts: Vec<&str> = component_toolchain.split('-').collect();
         assert!(parts.len() >= 3); // At least component-channel-host parts
@@ -435,10 +439,10 @@ mod tests {
     fn test_fallback_runtime_dir_logic() {
         // Test the path preference logic (without actually checking filesystem)
         let fallback = &*FALLBACK_RUNTIME_DIR;
-        
+
         // Should be a valid path
         assert!(!fallback.as_os_str().is_empty());
-        
+
         // Should be an absolute path in most cases
         // (Except when current_exe or home_dir fails, but that's rare)
     }

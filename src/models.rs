@@ -476,7 +476,7 @@ mod tests {
         let source = "hello 🦀 world\r\ngoodbye 🌍 world";
         // Test character position conversion
         let _loc = Loc::new(source, 8, 0); // Should point to space before 🦀
-        
+
         // Verify that CR characters are filtered out
         let source_with_cr = "hello\r\n world";
         let loc_with_cr = Loc::new(source_with_cr, 8, 0);
@@ -487,16 +487,16 @@ mod tests {
     #[test]
     fn test_loc_arithmetic_edge_cases() {
         let loc = Loc(10);
-        
+
         // Test overflow protection
         let loc_max = Loc(u32::MAX - 5);
         let result = loc_max + 10;
         assert!(result.0 >= loc_max.0); // Should not wrap around
-        
+
         // Test underflow protection with large subtraction
         let result_sub = loc - 20;
         assert_eq!(result_sub.0, 0); // Should saturate to 0
-        
+
         // Test addition of negative that would underflow
         let result_neg = loc + (-15);
         assert_eq!(result_neg.0, 0); // Should saturate to 0
@@ -507,15 +507,15 @@ mod tests {
         // Test edge cases for range creation
         let zero_size = Range::new(Loc(5), Loc(5));
         assert!(zero_size.is_none());
-        
+
         let backwards = Range::new(Loc(10), Loc(5));
         assert!(backwards.is_none());
-        
+
         let valid = Range::new(Loc(5), Loc(10)).unwrap();
         assert_eq!(valid.size(), 5);
         assert_eq!(valid.from().0, 5);
         assert_eq!(valid.until().0, 10);
-        
+
         // Test with maximum values
         let max_range = Range::new(Loc(0), Loc(u32::MAX)).unwrap();
         assert_eq!(max_range.size(), u32::MAX);
@@ -528,24 +528,24 @@ mod tests {
             live: Range::new(Loc(0), Loc(10)).unwrap(),
             dead: Range::new(Loc(10), Loc(20)).unwrap(),
         };
-        
+
         let other_var = MirVariable::Other {
             index: 24,
             live: Range::new(Loc(5), Loc(15)).unwrap(),
             dead: Range::new(Loc(15), Loc(25)).unwrap(),
         };
-        
+
         // Test pattern matching
         match user_var {
             MirVariable::User { index, .. } => assert_eq!(index, 42),
             _ => panic!("Should be User variant"),
         }
-        
+
         match other_var {
             MirVariable::Other { index, .. } => assert_eq!(index, 24),
             _ => panic!("Should be Other variant"),
         }
-        
+
         // Test equality
         let user_var2 = MirVariable::User {
             index: 42,
@@ -560,26 +560,26 @@ mod tests {
     fn test_mir_variables_collection_advanced() {
         let mut vars = MirVariables::with_capacity(10);
         assert!(vars.0.capacity() >= 10);
-        
+
         // Test adding duplicates
         let var1 = MirVariable::User {
             index: 1,
             live: Range::new(Loc(0), Loc(10)).unwrap(),
             dead: Range::new(Loc(10), Loc(20)).unwrap(),
         };
-        
+
         let var1_duplicate = MirVariable::User {
-            index: 1, // Same index
+            index: 1,                                   // Same index
             live: Range::new(Loc(5), Loc(15)).unwrap(), // Different ranges
             dead: Range::new(Loc(15), Loc(25)).unwrap(),
         };
-        
+
         vars.push(var1);
         vars.push(var1_duplicate); // Should not add due to same index
-        
+
         let result = vars.to_vec();
         assert_eq!(result.len(), 1);
-        
+
         // Verify the first one was kept (or_insert behavior)
         if let MirVariable::User { live, .. } = result[0] {
             assert_eq!(live.from().0, 0);
@@ -590,15 +590,15 @@ mod tests {
     fn test_file_operations() {
         let mut file = File::with_capacity(5);
         assert!(file.items.capacity() >= 5);
-        
+
         // Test adding functions
         file.items.push(Function::new(1));
         file.items.push(Function::new(2));
-        
+
         assert_eq!(file.items.len(), 2);
         assert_eq!(file.items[0].fn_id, 1);
         assert_eq!(file.items[1].fn_id, 2);
-        
+
         // Test cloning
         let file_clone = file.clone();
         assert_eq!(file.items.len(), file_clone.items.len());
@@ -608,28 +608,28 @@ mod tests {
     fn test_workspace_merge_operations() {
         let mut workspace1 = Workspace(FoldIndexMap::default());
         let mut workspace2 = Workspace(FoldIndexMap::default());
-        
+
         // Setup workspace1 with a crate
         let mut crate1 = Crate(FoldIndexMap::default());
         crate1.0.insert("lib.rs".to_string(), File::new());
         workspace1.0.insert("my_crate".to_string(), crate1);
-        
+
         // Setup workspace2 with the same crate name but different file
         let mut crate2 = Crate(FoldIndexMap::default());
         crate2.0.insert("main.rs".to_string(), File::new());
         workspace2.0.insert("my_crate".to_string(), crate2);
-        
+
         // Setup workspace2 with a different crate
         let crate3 = Crate(FoldIndexMap::default());
         workspace2.0.insert("other_crate".to_string(), crate3);
-        
+
         workspace1.merge(workspace2);
-        
+
         // Should have 2 crates total
         assert_eq!(workspace1.0.len(), 2);
         assert!(workspace1.0.contains_key("my_crate"));
         assert!(workspace1.0.contains_key("other_crate"));
-        
+
         // my_crate should have both files after merge
         let merged_crate = &workspace1.0["my_crate"];
         assert_eq!(merged_crate.0.len(), 2);
@@ -641,25 +641,25 @@ mod tests {
     fn test_crate_merge_with_duplicate_functions() {
         let mut crate1 = Crate(FoldIndexMap::default());
         let mut crate2 = Crate(FoldIndexMap::default());
-        
+
         // Create files with functions
         let mut file1 = File::new();
         file1.items.push(Function::new(1));
         file1.items.push(Function::new(2));
-        
+
         let mut file2 = File::new();
         file2.items.push(Function::new(2)); // Duplicate fn_id
         file2.items.push(Function::new(3));
-        
+
         crate1.0.insert("test.rs".to_string(), file1);
         crate2.0.insert("test.rs".to_string(), file2);
-        
+
         crate1.merge(crate2);
-        
+
         let merged_file = &crate1.0["test.rs"];
         // Should have 3 unique functions (1, 2, 3) with duplicate 2 filtered out
         assert_eq!(merged_file.items.len(), 3);
-        
+
         // Check that function IDs are unique
         let mut ids: Vec<u32> = merged_file.items.iter().map(|f| f.fn_id).collect();
         ids.sort();
@@ -670,26 +670,26 @@ mod tests {
     fn test_mir_statement_range_extraction() {
         let range = Range::new(Loc(10), Loc(20)).unwrap();
         let fn_local = FnLocal::new(1, 42);
-        
+
         let storage_live = MirStatement::StorageLive {
             target_local: fn_local,
             range,
         };
         assert_eq!(storage_live.range(), range);
-        
+
         let storage_dead = MirStatement::StorageDead {
             target_local: fn_local,
             range,
         };
         assert_eq!(storage_dead.range(), range);
-        
+
         let assign = MirStatement::Assign {
             target_local: fn_local,
             range,
             rval: None,
         };
         assert_eq!(assign.range(), range);
-        
+
         let other = MirStatement::Other { range };
         assert_eq!(other.range(), range);
     }
@@ -698,19 +698,19 @@ mod tests {
     fn test_mir_terminator_range_extraction() {
         let range = Range::new(Loc(5), Loc(15)).unwrap();
         let fn_local = FnLocal::new(2, 24);
-        
+
         let drop_term = MirTerminator::Drop {
             local: fn_local,
             range,
         };
         assert_eq!(drop_term.range(), range);
-        
+
         let call_term = MirTerminator::Call {
             destination_local: fn_local,
             fn_span: range,
         };
         assert_eq!(call_term.range(), range);
-        
+
         let other_term = MirTerminator::Other { range };
         assert_eq!(other_term.range(), range);
     }
@@ -719,27 +719,27 @@ mod tests {
     fn test_mir_basic_block_operations() {
         let mut bb = MirBasicBlock::with_capacity(5);
         assert!(bb.statements.capacity() >= 5);
-        
+
         // Add statements
         let range = Range::new(Loc(0), Loc(5)).unwrap();
         let fn_local = FnLocal::new(1, 1);
-        
+
         bb.statements.push(MirStatement::StorageLive {
             target_local: fn_local,
             range,
         });
-        
+
         bb.statements.push(MirStatement::Other { range });
-        
+
         // Add terminator
         bb.terminator = Some(MirTerminator::Drop {
             local: fn_local,
             range,
         });
-        
+
         assert_eq!(bb.statements.len(), 2);
         assert!(bb.terminator.is_some());
-        
+
         // Test default creation
         let default_bb = MirBasicBlock::default();
         assert_eq!(default_bb.statements.len(), 0);
@@ -752,7 +752,7 @@ mod tests {
         assert_eq!(func.fn_id, 123);
         assert!(func.basic_blocks.capacity() >= 10);
         assert!(func.decls.capacity() >= 20);
-        
+
         // Test that new function starts empty
         assert_eq!(func.basic_blocks.len(), 0);
         assert_eq!(func.decls.len(), 0);
@@ -764,25 +764,25 @@ mod tests {
             Range::new(Loc(0), Loc(5)).unwrap(),
             Range::new(Loc(10), Loc(15)).unwrap(),
         ];
-        
+
         let range_vec = range_vec_from_vec(ranges.clone());
         let converted_back = range_vec_into_vec(range_vec);
-        
+
         assert_eq!(ranges, converted_back);
     }
 
     #[test]
     fn test_fn_local_hash_consistency() {
         use std::collections::HashMap;
-        
+
         let fn_local1 = FnLocal::new(1, 2);
         let fn_local2 = FnLocal::new(1, 2);
         let fn_local3 = FnLocal::new(2, 1);
-        
+
         let mut map = HashMap::new();
         map.insert(fn_local1, "value1");
         map.insert(fn_local3, "value2");
-        
+
         // Same values should hash to same key
         assert_eq!(map.get(&fn_local2), Some(&"value1"));
         assert_eq!(map.get(&fn_local3), Some(&"value2"));
