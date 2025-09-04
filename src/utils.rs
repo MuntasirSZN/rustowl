@@ -350,7 +350,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[test] 
     fn test_common_ranges_multiple() {
         let ranges = vec![
             Range::new(Loc(0), Loc(10)).unwrap(),
@@ -360,11 +360,11 @@ mod tests {
         ];
 
         let common = common_ranges(&ranges);
-
+        
         // Should find overlaps between ranges 0-1, 0-2, and 1-2
         // The result should be merged ranges
         assert!(!common.is_empty());
-
+        
         // Verify there's overlap in the 5-12 region
         assert!(common.iter().any(|r| r.from().0 >= 5 && r.until().0 <= 12));
     }
@@ -372,7 +372,7 @@ mod tests {
     #[test]
     fn test_excluded_ranges_small() {
         use crate::models::range_vec_from_vec;
-
+        
         let from = range_vec_from_vec(vec![Range::new(Loc(0), Loc(20)).unwrap()]);
         let excludes = vec![Range::new(Loc(5), Loc(15)).unwrap()];
 
@@ -380,16 +380,8 @@ mod tests {
 
         // Should split the original range around the exclusion
         assert_eq!(result.len(), 2);
-        assert!(
-            result
-                .iter()
-                .any(|r| r.from() == Loc(0) && r.until() == Loc(4))
-        );
-        assert!(
-            result
-                .iter()
-                .any(|r| r.from() == Loc(16) && r.until() == Loc(20))
-        );
+        assert!(result.iter().any(|r| r.from() == Loc(0) && r.until() == Loc(4)));
+        assert!(result.iter().any(|r| r.from() == Loc(16) && r.until() == Loc(20)));
     }
 
     #[test]
@@ -402,25 +394,79 @@ mod tests {
         }
 
         impl MirVisitor for TestVisitor {
+            /// Increment the visitor's function counter when a MIR function is visited.
+            ///
+            /// This method is invoked to record that a `Function` node was encountered during MIR traversal.
+            /// The `_func` parameter is the visited function; it is not inspected by this implementation.
+            /// Side effect: increments `self.func_count` by 1.
             fn visit_func(&mut self, _func: &Function) {
                 self.func_count += 1;
             }
 
+            /// Record a visited MIR declaration by incrementing the visitor's declaration counter.
+            ///
+            /// This method is invoked when a MIR declaration is visited; the default implementation
+            /// increments the visitor's `decl_count`.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// // assume `MirDecl` and `MirVisitorImpl` are in scope and `visit_decl` is available
+            /// let mut visitor = MirVisitorImpl::default();
+            /// let decl = MirDecl::default();
+            /// visitor.visit_decl(&decl);
+            /// assert_eq!(visitor.decl_count, 1);
+            /// ```
             fn visit_decl(&mut self, _decl: &MirDecl) {
                 self.decl_count += 1;
             }
 
+            /// Invoked for each MIR statement encountered; the default implementation counts statements.
+            ///
+            /// This method is called once per `MirStatement` during MIR traversal. The default behavior
+            /// increments an internal `stmt_count` counter; implementors can override to perform other
+            /// per-statement actions.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// struct Counter { stmt_count: usize }
+            /// impl Counter {
+            ///     fn visit_stmt(&mut self, _stmt: &str) { self.stmt_count += 1; }
+            /// }
+            /// let mut c = Counter { stmt_count: 0 };
+            /// c.visit_stmt("stmt");
+            /// assert_eq!(c.stmt_count, 1);
+            /// ```
             fn visit_stmt(&mut self, _stmt: &MirStatement) {
                 self.stmt_count += 1;
             }
 
+            /// Increment the visitor's terminator visit counter.
+            ///
+            /// Called when a MIR terminator is visited; this implementation records the visit
+            /// by incrementing the `term_count` field.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// struct V { term_count: usize }
+            /// impl V {
+            ///     fn visit_term(&mut self, _term: &()) {
+            ///         self.term_count += 1;
+            ///     }
+            /// }
+            /// let mut v = V { term_count: 0 };
+            /// v.visit_term(&());
+            /// assert_eq!(v.term_count, 1);
+            /// ```
             fn visit_term(&mut self, _term: &MirTerminator) {
                 self.term_count += 1;
             }
         }
 
         let mut func = Function::new(1);
-
+        
         // Add some declarations
         func.decls.push(MirDecl::Other {
             local: FnLocal::new(1, 1),
@@ -444,7 +490,7 @@ mod tests {
         bb.terminator = Some(MirTerminator::Other {
             range: Range::new(Loc(10), Loc(15)).unwrap(),
         });
-
+        
         func.basic_blocks.push(bb);
 
         let mut visitor = TestVisitor {
@@ -472,25 +518,25 @@ mod tests {
         let loc = Loc(8); // Should be 'r' in "world"
         let (line_cr, char_cr) = index_to_line_char(source_with_cr, loc);
         let (line_no_cr, char_no_cr) = index_to_line_char(source_without_cr, loc);
-
+        
         assert_eq!(line_cr, line_no_cr);
         assert_eq!(char_cr, char_no_cr);
-
+        
         // Test conversion back
         let back_cr = line_char_to_index(source_with_cr, line_cr, char_cr);
         let back_no_cr = line_char_to_index(source_without_cr, line_no_cr, char_no_cr);
-
+        
         assert_eq!(back_cr, back_no_cr);
     }
 
     #[test]
     fn test_line_char_to_index_edge_cases() {
         let source = "a\nb\nc";
-
+        
         // Test beyond end of string
         let result = line_char_to_index(source, 10, 0);
         assert_eq!(result, source.chars().count() as u32);
-
+        
         // Test beyond end of line
         let result = line_char_to_index(source, 0, 10);
         assert_eq!(result, source.chars().count() as u32);
@@ -500,14 +546,14 @@ mod tests {
     fn test_is_super_range_edge_cases() {
         let r1 = Range::new(Loc(0), Loc(10)).unwrap();
         let r2 = Range::new(Loc(0), Loc(10)).unwrap(); // Identical ranges
-
+        
         // Identical ranges are not super ranges of each other
         assert!(!is_super_range(r1, r2));
         assert!(!is_super_range(r2, r1));
-
+        
         let r3 = Range::new(Loc(0), Loc(5)).unwrap(); // Same start, shorter
         let r4 = Range::new(Loc(5), Loc(10)).unwrap(); // Same end, later start
-
+        
         assert!(is_super_range(r1, r3)); // r1 contains r3 (same start, extends further)
         assert!(is_super_range(r1, r4)); // r1 contains r4 (starts earlier, same end)
         assert!(!is_super_range(r3, r1));
@@ -518,13 +564,13 @@ mod tests {
     fn test_common_range_edge_cases() {
         let r1 = Range::new(Loc(0), Loc(5)).unwrap();
         let r2 = Range::new(Loc(5), Loc(10)).unwrap(); // Adjacent ranges
-
+        
         // Adjacent ranges don't overlap
         assert!(common_range(r1, r2).is_none());
-
+        
         let r3 = Range::new(Loc(0), Loc(10)).unwrap();
         let r4 = Range::new(Loc(2), Loc(8)).unwrap(); // r4 inside r3
-
+        
         let common = common_range(r3, r4).unwrap();
         assert_eq!(common, r4); // Common range should be the smaller one
     }
@@ -533,16 +579,16 @@ mod tests {
     fn test_merge_ranges_edge_cases() {
         let r1 = Range::new(Loc(0), Loc(5)).unwrap();
         let r2 = Range::new(Loc(5), Loc(10)).unwrap(); // Adjacent
-
+        
         // Adjacent ranges should merge
         let merged = merge_ranges(r1, r2).unwrap();
         assert_eq!(merged.from(), Loc(0));
         assert_eq!(merged.until(), Loc(10));
-
+        
         // Order shouldn't matter for merging
         let merged2 = merge_ranges(r2, r1).unwrap();
         assert_eq!(merged, merged2);
-
+        
         // Identical ranges should merge to themselves
         let merged3 = merge_ranges(r1, r1).unwrap();
         assert_eq!(merged3, r1);
@@ -553,24 +599,20 @@ mod tests {
         // Test with overlapping and adjacent ranges
         let ranges = vec![
             Range::new(Loc(0), Loc(5)).unwrap(),
-            Range::new(Loc(3), Loc(8)).unwrap(), // Overlaps with first
-            Range::new(Loc(8), Loc(12)).unwrap(), // Adjacent to second
+            Range::new(Loc(3), Loc(8)).unwrap(),   // Overlaps with first
+            Range::new(Loc(8), Loc(12)).unwrap(),  // Adjacent to second
             Range::new(Loc(15), Loc(20)).unwrap(), // Separate
             Range::new(Loc(18), Loc(25)).unwrap(), // Overlaps with fourth
         ];
 
         let eliminated = eliminated_ranges(ranges);
-
+        
         // Should merge 0-12 and 15-25
         assert_eq!(eliminated.len(), 2);
-
-        let has_first_merged = eliminated
-            .iter()
-            .any(|r| r.from() == Loc(0) && r.until() == Loc(12));
-        let has_second_merged = eliminated
-            .iter()
-            .any(|r| r.from() == Loc(15) && r.until() == Loc(25));
-
+        
+        let has_first_merged = eliminated.iter().any(|r| r.from() == Loc(0) && r.until() == Loc(12));
+        let has_second_merged = eliminated.iter().any(|r| r.from() == Loc(15) && r.until() == Loc(25));
+        
         assert!(has_first_merged);
         assert!(has_second_merged);
     }
@@ -582,7 +624,7 @@ mod tests {
             Range::new(Loc(0), Loc(30)).unwrap(),
             Range::new(Loc(50), Loc(80)).unwrap(),
         ];
-
+        
         let excludes = vec![
             Range::new(Loc(10), Loc(15)).unwrap(),
             Range::new(Loc(20), Loc(25)).unwrap(),
@@ -590,10 +632,10 @@ mod tests {
         ];
 
         let result = exclude_ranges(from, excludes.clone());
-
+        
         // Should create multiple fragments
         assert!(result.len() >= 4);
-
+        
         // Check that none of the result ranges overlap with excludes
         for result_range in &result {
             for exclude_range in &excludes {
@@ -605,7 +647,7 @@ mod tests {
     #[test]
     fn test_unicode_handling() {
         let source = "Hello 🦀 Rust 🌍 World";
-
+        
         // Test various positions including unicode boundaries
         for i in 0..source.chars().count() {
             let loc = Loc(i as u32);
@@ -613,7 +655,7 @@ mod tests {
             let back = line_char_to_index(source, line, char);
             assert_eq!(loc.0, back);
         }
-
+        
         // Test specific unicode character position
         let crab_pos = source.chars().position(|c| c == '🦀').unwrap() as u32;
         let (line, char) = index_to_line_char(source, Loc(crab_pos));
