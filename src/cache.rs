@@ -63,7 +63,8 @@ pub fn get_cache_path() -> Option<PathBuf> {
 /// # Examples
 ///
 /// ```
-/// std::env::set_var("RUSTOWL_CACHE_MAX_ENTRIES", "5");
+/// use rustowl::cache::get_cache_config;
+/// unsafe { std::env::set_var("RUSTOWL_CACHE_MAX_ENTRIES", "5"); }
 /// let cfg = get_cache_config();
 /// assert_eq!(cfg.max_entries, 5);
 /// ```

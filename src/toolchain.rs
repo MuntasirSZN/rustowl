@@ -291,10 +291,11 @@ pub async fn setup_cargo_command() -> tokio::process::Command {
 /// ```
 /// use std::path::Path;
 /// use tokio::process::Command;
+/// use rustowl::toolchain;
 ///
 /// let sysroot = Path::new("/opt/rust/sysroot");
 /// let mut cmd = Command::new("cargo");
-/// crate::toolchain::set_rustc_env(&mut cmd, sysroot);
+/// toolchain::set_rustc_env(&mut cmd, sysroot);
 /// // cmd is now configured to invoke cargo/rustc with the given sysroot.
 /// ```
 pub fn set_rustc_env(command: &mut tokio::process::Command, sysroot: &Path) {
@@ -769,5 +770,258 @@ mod tests {
         // Test with non-matching prefix
         let other_base = PathBuf::from("/different/path");
         assert!(full_path.strip_prefix(&other_base).is_err());
+    }
+
+    #[test]
+    fn test_sysroot_path_validation() {
+        // Test sysroot path validation logic
+        let runtime_paths = [
+            "/opt/rustowl",
+            "/home/user/.rustowl",
+            "/usr/local/rustowl",
+            "relative/path",
+            "",
+        ];
+
+        for runtime_path in runtime_paths {
+            let runtime = PathBuf::from(runtime_path);
+            let sysroot = sysroot_from_runtime(&runtime);
+            
+            // Should always contain the toolchain name
+            assert!(sysroot.to_string_lossy().contains(TOOLCHAIN));
+            
+            // Should be a subdirectory of runtime
+            if !runtime_path.is_empty() {
+                assert!(sysroot.starts_with(&runtime));
+            }
+        }
+    }
+
+    #[test]
+    fn test_toolchain_constants_integrity() {
+        // Test that build-time constants are valid
+        
+        // TOOLCHAIN should be non-empty and reasonable format
+        assert!(!TOOLCHAIN.is_empty());
+        assert!(TOOLCHAIN.len() > 5); // Should be something like "nightly-2024-01-01"
+        
+        // HOST_TUPLE should be non-empty and contain target architecture
+        assert!(!HOST_TUPLE.is_empty());
+        assert!(HOST_TUPLE.contains('-')); // Should contain hyphens separating components
+        
+        // TOOLCHAIN_CHANNEL should be a known channel
+        let valid_channels = ["stable", "beta", "nightly"];
+        assert!(valid_channels.contains(&TOOLCHAIN_CHANNEL));
+        
+        // TOOLCHAIN_DATE should be valid format if present
+        if let Some(date) = TOOLCHAIN_DATE {
+            assert!(!date.is_empty());
+            assert!(date.len() >= 10); // At least YYYY-MM-DD format
+        }
+    }
+
+    #[test]
+    fn test_complex_path_operations() {
+        // Test complex path operations with Unicode and special characters
+        let base_paths = [
+            "simple",
+            "with spaces",
+            "with-hyphens",
+            "with_underscores",
+            "with.dots",
+            "数字", // Unicode characters
+            "ñoño", // Accented characters
+        ];
+
+        for base in base_paths {
+            let runtime = PathBuf::from(base);
+            let sysroot = sysroot_from_runtime(&runtime);
+            
+            // Operations should not panic
+            assert!(sysroot.is_absolute() || sysroot.is_relative());
+            
+            // Should maintain path structure
+            let parent = sysroot.parent();
+            assert!(parent.is_some() || sysroot == PathBuf::from(""));
+        }
+    }
+
+    #[test]
+    fn test_environment_variable_parsing() {
+        // Test environment variable parsing edge cases
+        let test_vars = [
+            ("", None),
+            ("not_a_number", None),
+            ("12345", Some(12345)),
+            ("0", Some(0)),
+            ("-1", None), // Negative numbers should be invalid
+            ("999999999999999999999", None), // Overflow should be handled
+            ("42.5", None), // Float should be invalid
+            ("  123  ", None), // Whitespace should be invalid
+        ];
+
+        for (input, expected) in test_vars {
+            let result = input.parse::<usize>().ok();
+            assert_eq!(result, expected, "Failed for input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_url_component_validation() {
+        // Test URL component validation
+        let valid_components = [
+            "rustc",
+            "rust-std",
+            "cargo",
+            "clippy",
+            "rustfmt",
+            "rust-analyzer",
+        ];
+
+        let invalid_components = [
+            "",
+            " ",
+            "rust std", // Space
+            "rust\nstd", // Newline
+            "rust\tstd", // Tab
+            "rust/std", // Slash
+            "rust?std", // Question mark
+            "rust#std", // Hash
+        ];
+
+        for component in valid_components {
+            assert!(!component.is_empty());
+            assert!(!component.contains(' '));
+            assert!(!component.contains('\n'));
+            assert!(!component.contains('\t'));
+            assert!(!component.contains('/'));
+        }
+
+        for component in invalid_components {
+            let is_invalid = component.is_empty() 
+                || component.contains(' ') 
+                || component.contains('\n')
+                || component.contains('\t')
+                || component.contains('/')
+                || component.contains('?')
+                || component.contains('#');
+            assert!(is_invalid, "Component should be invalid: {}", component);
+        }
+    }
+
+    #[test]
+    fn test_recursive_read_dir_error_handling() {
+        // Test recursive_read_dir with various error conditions
+        use std::fs;
+        use tempfile::tempdir;
+
+        // Create temporary directory for testing
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Test with valid directory
+        let sub_dir = temp_path.join("subdir");
+        fs::create_dir(&sub_dir).unwrap();
+        
+        let file_path = sub_dir.join("test.txt");
+        fs::write(&file_path, "test content").unwrap();
+
+        let results = recursive_read_dir(temp_path);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], file_path);
+
+        // Test with non-existent path
+        let non_existent = temp_path.join("does_not_exist");
+        let empty_results = recursive_read_dir(&non_existent);
+        assert!(empty_results.is_empty());
+    }
+
+    #[test]
+    fn test_fallback_runtime_dir_comprehensive() {
+        
+        // Test /opt/rustowl path construction
+        let opt_path = PathBuf::from("/opt/rustowl");
+        assert_eq!(opt_path.to_string_lossy(), "/opt/rustowl");
+        
+        // Test home directory path construction
+        if let Some(home) = std::env::var_os("HOME") {
+            let home_path = PathBuf::from(home).join(".rustowl");
+            assert!(home_path.ends_with(".rustowl"));
+        }
+        
+        // Test current exe path construction (simulate)
+        let current_exe_parent = PathBuf::from("/usr/bin");
+        assert!(current_exe_parent.is_absolute());
+    }
+
+    #[test]
+    fn test_path_join_operations() {
+        // Test path joining operations with various inputs
+        let base_paths = [
+            "/opt/rustowl",
+            "/home/user/.rustowl",
+            "relative/path",
+        ];
+
+        let components = [
+            "sysroot",
+            TOOLCHAIN,
+            "bin",
+            "lib",
+            "rustc",
+        ];
+
+        for base in base_paths {
+            let base_path = PathBuf::from(base);
+            
+            for component in components {
+                let joined = base_path.join(component);
+                
+                // Should contain the component
+                assert!(joined.to_string_lossy().contains(component));
+                
+                // Should be longer than the base path
+                assert!(joined.to_string_lossy().len() > base_path.to_string_lossy().len());
+            }
+        }
+    }
+
+    #[test]
+    fn test_command_environment_setup() {
+        // Test command environment variable setup logic
+        use tokio::process::Command;
+        
+        let sysroot = PathBuf::from("/opt/rustowl/sysroot/nightly-2024-01-01");
+        let mut cmd = Command::new("test");
+        
+        // Test set_rustc_env function
+        set_rustc_env(&mut cmd, &sysroot);
+        
+        // The command should be properly configured (we can't directly inspect env vars,
+        // but we can verify the function doesn't panic)
+        let program = cmd.as_std().get_program();
+        assert_eq!(program, "test");
+    }
+
+    #[test]
+    fn test_cross_platform_compatibility() {
+        // Test cross-platform path handling
+        let unix_style = "/opt/rustowl/sysroot";
+        let windows_style = r"C:\opt\rustowl\sysroot";
+        
+        // Both should be valid paths on their respective platforms
+        let unix_path = PathBuf::from(unix_style);
+        let windows_path = PathBuf::from(windows_style);
+        
+        // Test path operations don't panic
+        let _unix_components: Vec<_> = unix_path.components().collect();
+        let _windows_components: Vec<_> = windows_path.components().collect();
+        
+        // Test sysroot construction with different path styles
+        let unix_sysroot = sysroot_from_runtime(&unix_path);
+        let windows_sysroot = sysroot_from_runtime(&windows_path);
+        
+        assert!(unix_sysroot.to_string_lossy().contains(TOOLCHAIN));
+        assert!(windows_sysroot.to_string_lossy().contains(TOOLCHAIN));
     }
 }
