@@ -341,7 +341,7 @@ mod tests {
     fn test_sysroot_from_runtime() {
         let runtime = PathBuf::from("/opt/test-runtime");
         let sysroot = sysroot_from_runtime(&runtime);
-        
+
         let expected = runtime.join("sysroot").join(TOOLCHAIN);
         assert_eq!(sysroot, expected);
     }
@@ -370,10 +370,14 @@ mod tests {
         assert!(!TOOLCHAIN.is_empty());
         assert!(!HOST_TUPLE.is_empty());
         assert!(!TOOLCHAIN_CHANNEL.is_empty());
-        
+
         // These should be reasonable values
-        assert!(TOOLCHAIN_CHANNEL == "nightly" || TOOLCHAIN_CHANNEL == "stable" || TOOLCHAIN_CHANNEL == "beta");
-        
+        assert!(
+            TOOLCHAIN_CHANNEL == "nightly"
+                || TOOLCHAIN_CHANNEL == "stable"
+                || TOOLCHAIN_CHANNEL == "beta"
+        );
+
         // Host tuple should contain some expected patterns
         assert!(HOST_TUPLE.contains('-'));
     }
@@ -398,23 +402,23 @@ mod tests {
     fn test_set_rustc_env() {
         let mut command = tokio::process::Command::new("echo");
         let sysroot = PathBuf::from("/test/sysroot");
-        
+
         set_rustc_env(&mut command, &sysroot);
-        
+
         // We can't easily inspect the environment variables set on the command,
         // but we can verify the function doesn't panic and accepts the expected types
         // The actual functionality requires process execution which we avoid in unit tests
     }
 
-    #[test] 
+    #[test]
     fn test_sysroot_path_construction() {
         // Test edge cases for path construction
         let empty_path = PathBuf::new();
         let sysroot = sysroot_from_runtime(&empty_path);
-        
+
         // Should still construct a valid path
         assert_eq!(sysroot, PathBuf::from("sysroot").join(TOOLCHAIN));
-        
+
         // Test with root path
         let root_path = PathBuf::from("/");
         let sysroot = sysroot_from_runtime(&root_path);
@@ -430,7 +434,7 @@ mod tests {
                 assert!(!date.is_empty());
                 // Date should be in YYYY-MM-DD format if present
                 assert!(date.len() >= 10);
-            },
+            }
             None => {
                 // This is fine, toolchain date is optional
             }
@@ -442,12 +446,12 @@ mod tests {
         // Test the URL construction logic that would be used in install_component
         let component = "rustc";
         let component_toolchain = format!("{component}-{TOOLCHAIN_CHANNEL}-{HOST_TUPLE}");
-        
+
         // Should contain all the parts
         assert!(component_toolchain.contains(component));
         assert!(component_toolchain.contains(TOOLCHAIN_CHANNEL));
         assert!(component_toolchain.contains(HOST_TUPLE));
-        
+
         // Should be properly formatted with dashes
         let parts: Vec<&str> = component_toolchain.split('-').collect();
         assert!(parts.len() >= 3); // At least component-channel-host parts
@@ -462,10 +466,10 @@ mod tests {
     fn test_fallback_runtime_dir_logic() {
         // Test the path preference logic (without actually checking filesystem)
         let fallback = &*FALLBACK_RUNTIME_DIR;
-        
+
         // Should be a valid path
         assert!(!fallback.as_os_str().is_empty());
-        
+
         // Should be an absolute path in most cases
         // (Except when current_exe or home_dir fails, but that's rare)
     }
@@ -475,25 +479,26 @@ mod tests {
         // Create a temporary directory structure for testing
         let temp_dir = tempfile::tempdir().unwrap();
         let temp_path = temp_dir.path();
-        
+
         // Create subdirectories and files
         std::fs::create_dir_all(temp_path.join("subdir1")).unwrap();
         std::fs::create_dir_all(temp_path.join("subdir2")).unwrap();
         std::fs::write(temp_path.join("file1.txt"), "content").unwrap();
         std::fs::write(temp_path.join("subdir1").join("file2.txt"), "content").unwrap();
         std::fs::write(temp_path.join("subdir2").join("file3.txt"), "content").unwrap();
-        
+
         let files = recursive_read_dir(&temp_path);
-        
+
         // Should find all files recursively
         assert!(files.len() >= 3);
-        
+
         // Check that files are found (paths might be in different order)
-        let file_names: Vec<String> = files.iter()
+        let file_names: Vec<String> = files
+            .iter()
             .filter_map(|p| p.file_name()?.to_str())
             .map(|s| s.to_string())
             .collect();
-        
+
         assert!(file_names.contains(&"file1.txt".to_string()));
         assert!(file_names.contains(&"file2.txt".to_string()));
         assert!(file_names.contains(&"file3.txt".to_string()));
@@ -503,12 +508,15 @@ mod tests {
     fn test_host_tuple_format() {
         // HOST_TUPLE should follow the expected format: arch-vendor-os-env
         let parts: Vec<&str> = HOST_TUPLE.split('-').collect();
-        assert!(parts.len() >= 3, "HOST_TUPLE should have at least 3 parts separated by hyphens");
-        
+        assert!(
+            parts.len() >= 3,
+            "HOST_TUPLE should have at least 3 parts separated by hyphens"
+        );
+
         // First part should be architecture
         let arch = parts[0];
         assert!(!arch.is_empty());
-        
+
         // Common architectures
         let valid_archs = ["x86_64", "i686", "aarch64", "armv7", "riscv64"];
         let is_valid_arch = valid_archs.iter().any(|&a| arch.starts_with(a));
@@ -519,13 +527,19 @@ mod tests {
     fn test_toolchain_format() {
         // TOOLCHAIN should be a valid toolchain identifier
         assert!(!TOOLCHAIN.is_empty());
-        
+
         // Should contain date or channel information
         // Typical format might be: nightly-2023-01-01-x86_64-unknown-linux-gnu
-        assert!(TOOLCHAIN.contains('-'), "TOOLCHAIN should contain separators");
-        
+        assert!(
+            TOOLCHAIN.contains('-'),
+            "TOOLCHAIN should contain separators"
+        );
+
         // Should not contain spaces or special characters
-        assert!(!TOOLCHAIN.contains(' '), "TOOLCHAIN should not contain spaces");
+        assert!(
+            !TOOLCHAIN.contains(' '),
+            "TOOLCHAIN should not contain spaces"
+        );
     }
 
     #[test]
@@ -540,7 +554,7 @@ mod tests {
         let unicode_path = PathBuf::from("/opt/rustowl/测试");
         let sysroot = sysroot_from_runtime(&unicode_path);
         assert!(sysroot.starts_with(&unicode_path));
-        
+
         // Test with very long path
         let long_path = PathBuf::from("/".to_string() + &"very_long_directory_name/".repeat(10));
         let sysroot = sysroot_from_runtime(&long_path);
@@ -551,18 +565,18 @@ mod tests {
     fn test_environment_variable_edge_cases() {
         // Test path handling with empty environment variables
         use std::collections::VecDeque;
-        
+
         // Test with empty LD_LIBRARY_PATH-like handling
         let empty_paths: VecDeque<PathBuf> = VecDeque::new();
         let joined = std::env::join_paths(empty_paths.clone());
         assert!(joined.is_ok());
-        
+
         // Test with single path
         let mut single_path = empty_paths;
         single_path.push_back(PathBuf::from("/usr/lib"));
         let joined = std::env::join_paths(single_path);
         assert!(joined.is_ok());
-        
+
         // Test with multiple paths
         let mut multi_paths = VecDeque::new();
         multi_paths.push_back(PathBuf::from("/usr/lib"));
@@ -576,17 +590,17 @@ mod tests {
         // Test URL construction components
         let component = "rust-std";
         let base_url = "https://static.rust-lang.org/dist";
-        
+
         // Test with date
         let date = "2023-01-01";
         let url_with_date = format!("{base_url}/{date}");
         assert!(url_with_date.starts_with("https://"));
         assert!(url_with_date.contains(date));
-        
+
         // Test component URL construction
         let component_toolchain = format!("{component}-{TOOLCHAIN_CHANNEL}-{HOST_TUPLE}");
         let tarball_url = format!("{base_url}/{component_toolchain}.tar.gz");
-        
+
         assert!(tarball_url.starts_with("https://"));
         assert!(tarball_url.ends_with(".tar.gz"));
         assert!(tarball_url.contains(component));
@@ -598,7 +612,7 @@ mod tests {
     fn test_version_url_construction() {
         // Test RustOwl toolchain URL construction logic
         let version = "1.0.0";
-        
+
         #[cfg(not(target_os = "windows"))]
         {
             let rustowl_tarball_url = format!(
@@ -610,7 +624,7 @@ mod tests {
             assert!(rustowl_tarball_url.contains(HOST_TUPLE));
             assert!(rustowl_tarball_url.ends_with(".tar.gz"));
         }
-        
+
         #[cfg(target_os = "windows")]
         {
             let rustowl_zip_url = format!(
@@ -628,19 +642,19 @@ mod tests {
     fn test_executable_name_logic() {
         // Test executable name construction logic
         let name = "rustc";
-        
+
         #[cfg(not(windows))]
         {
             let exec_name = name.to_owned();
             assert_eq!(exec_name, "rustc");
         }
-        
+
         #[cfg(windows)]
         {
             let exec_name = format!("{name}.exe");
             assert_eq!(exec_name, "rustc.exe");
         }
-        
+
         // Test with different executable names
         let test_names = ["cargo", "rustfmt", "clippy"];
         for test_name in test_names {
@@ -649,7 +663,7 @@ mod tests {
                 let exec_name = test_name.to_owned();
                 assert_eq!(exec_name, test_name);
             }
-            
+
             #[cfg(windows)]
             {
                 let exec_name = format!("{test_name}.exe");
@@ -663,11 +677,10 @@ mod tests {
     fn test_toolchain_constants_consistency() {
         // Verify that constants are consistent with each other
         assert!(
-            TOOLCHAIN.contains(TOOLCHAIN_CHANNEL) || 
-            TOOLCHAIN.contains(HOST_TUPLE),
+            TOOLCHAIN.contains(TOOLCHAIN_CHANNEL) || TOOLCHAIN.contains(HOST_TUPLE),
             "TOOLCHAIN should contain either channel or host tuple information"
         );
-        
+
         // Test that optional date is properly handled
         if let Some(date) = TOOLCHAIN_DATE {
             assert!(!date.is_empty());
@@ -677,7 +690,11 @@ mod tests {
                 if parts.len() >= 3 {
                     // First part should be year (4 digits)
                     if let Ok(year) = parts[0].parse::<u32>() {
-                        assert!(year >= 2020 && year <= 2030, "Year should be reasonable: {}", year);
+                        assert!(
+                            year >= 2020 && year <= 2030,
+                            "Year should be reasonable: {}",
+                            year
+                        );
                     }
                 }
             }
@@ -689,29 +706,35 @@ mod tests {
         // Test progress calculation logic
         let content_length = 1000;
         let mut received_percentages = Vec::new();
-        
+
         for chunk_size in [100, 200, 150, 300, 250] {
             let current_size = chunk_size;
             let current = current_size * 100 / content_length;
             received_percentages.push(current);
         }
-        
+
         // Verify progress makes sense
         assert!(received_percentages.iter().all(|&p| p <= 100));
-        
+
         // Test edge case with zero content length
         let zero_length = 0;
         let default_length = 200_000_000;
-        let chosen_length = if zero_length == 0 { default_length } else { zero_length };
+        let chosen_length = if zero_length == 0 {
+            default_length
+        } else {
+            zero_length
+        };
         assert_eq!(chosen_length, default_length);
     }
 
     #[test]
     fn test_worker_thread_calculation() {
         // Test the worker thread calculation logic used in RUNTIME
-        let available = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
+        let available = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(8);
         let worker_threads = (available / 2).clamp(2, 8);
-        
+
         assert!(worker_threads >= 2);
         assert!(worker_threads <= 8);
         assert!(worker_threads <= available);
@@ -721,14 +744,18 @@ mod tests {
     fn test_component_validation() {
         // Test component name validation
         let valid_components = ["rustc", "rust-std", "cargo", "clippy", "rustfmt"];
-        
+
         for component in valid_components {
             assert!(!component.is_empty());
             assert!(!component.contains(' '));
             assert!(!component.contains('\n'));
-            
+
             // Component name should be ASCII alphanumeric with hyphens
-            assert!(component.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+            assert!(
+                component
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-')
+            );
         }
     }
 
@@ -737,13 +764,13 @@ mod tests {
         // Test path prefix stripping logic
         let base = PathBuf::from("/opt/rustowl/component");
         let full_path = base.join("lib").join("file.so");
-        
+
         if let Ok(rel_path) = full_path.strip_prefix(&base) {
             assert_eq!(rel_path, PathBuf::from("lib").join("file.so"));
         } else {
             panic!("strip_prefix should succeed");
         }
-        
+
         // Test with non-matching prefix
         let other_base = PathBuf::from("/different/path");
         assert!(full_path.strip_prefix(&other_base).is_err());

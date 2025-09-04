@@ -208,7 +208,7 @@ mod tests {
     fn test_atomic_true_constant() {
         // Test that ATOMIC_TRUE is properly initialized
         assert_eq!(ATOMIC_TRUE.load(Ordering::Relaxed), true);
-        
+
         // Test that it can be read multiple times consistently
         assert_eq!(ATOMIC_TRUE.load(Ordering::SeqCst), true);
         assert_eq!(ATOMIC_TRUE.load(Ordering::Acquire), true);
@@ -220,7 +220,7 @@ mod tests {
         let available = std::thread::available_parallelism()
             .map(|n| (n.get() / 2).clamp(2, 8))
             .unwrap_or(4);
-        
+
         assert!(available >= 2);
         assert!(available <= 8);
     }
@@ -229,13 +229,11 @@ mod tests {
     fn test_runtime_configuration() {
         // Test that RUNTIME is properly configured
         let runtime = &*RUNTIME;
-        
+
         // Test that we can spawn a simple task
-        let result = runtime.block_on(async {
-            42
-        });
+        let result = runtime.block_on(async { 42 });
         assert_eq!(result, 42);
-        
+
         // Test that runtime handle is available
         let _handle = runtime.handle();
         assert!(tokio::runtime::Handle::try_current().is_ok());
@@ -258,20 +256,30 @@ mod tests {
     #[test]
     fn test_argument_processing_logic() {
         // Test the argument processing logic without actually running the compiler
-        
+
         // Test detection of version flags
         let version_args = vec!["-vV", "--version", "--print=cfg"];
         for arg in version_args {
             // Simulate the check that's done in run_compiler
-            let should_use_default_rustc = arg == "-vV" || arg == "--version" || arg.starts_with("--print");
-            assert!(should_use_default_rustc, "Should use default rustc for: {}", arg);
+            let should_use_default_rustc =
+                arg == "-vV" || arg == "--version" || arg.starts_with("--print");
+            assert!(
+                should_use_default_rustc,
+                "Should use default rustc for: {}",
+                arg
+            );
         }
-        
+
         // Test normal compilation args
         let normal_args = vec!["--crate-type", "lib", "-L", "dependency=/path"];
         for arg in normal_args {
-            let should_use_default_rustc = arg == "-vV" || arg == "--version" || arg.starts_with("--print");
-            assert!(!should_use_default_rustc, "Should not use default rustc for: {}", arg);
+            let should_use_default_rustc =
+                arg == "-vV" || arg == "--version" || arg.starts_with("--print");
+            assert!(
+                !should_use_default_rustc,
+                "Should not use default rustc for: {}",
+                arg
+            );
         }
     }
 
@@ -281,16 +289,14 @@ mod tests {
         let test_cases = vec![
             // Case 1: For dependencies: rustowlc [args...]
             (vec!["rustowlc", "--crate-type", "lib"], false), // Different first and second args
-            
-            // Case 2: For user workspace: rustowlc rustowlc [args...]  
+            // Case 2: For user workspace: rustowlc rustowlc [args...]
             (vec!["rustowlc", "rustowlc", "--crate-type", "lib"], true), // Same first and second args
-            
             // Edge cases
-            (vec!["rustowlc"], false), // Only one arg
-            (vec!["rustc", "rustc"], true), // Same pattern with rustc
+            (vec!["rustowlc"], false),          // Only one arg
+            (vec!["rustc", "rustc"], true),     // Same pattern with rustc
             (vec!["other", "rustowlc"], false), // Different tools
         ];
-        
+
         for (args, should_skip) in test_cases {
             let first = args.first();
             let second = args.get(1);
@@ -302,13 +308,17 @@ mod tests {
     #[test]
     fn test_hashmap_creation_with_capacity() {
         // Test the HashMap creation pattern used in handle_analyzed_result
-        let map: HashMap<String, String> = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+        let map: HashMap<String, String> =
+            HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
         assert_eq!(map.len(), 0);
         assert!(map.capacity() >= 1);
-        
+
         // Test creating with different capacities
         for capacity in [0, 1, 10, 100] {
-            let map: HashMap<String, String> = HashMap::with_capacity_and_hasher(capacity, foldhash::quality::RandomState::default());
+            let map: HashMap<String, String> = HashMap::with_capacity_and_hasher(
+                capacity,
+                foldhash::quality::RandomState::default(),
+            );
             assert_eq!(map.len(), 0);
             if capacity > 0 {
                 assert!(map.capacity() >= capacity);
@@ -321,12 +331,13 @@ mod tests {
         // Test the workspace structure creation logic
         let file_name = "test.rs".to_string();
         let crate_name = "test_crate".to_string();
-        
+
         // Create a minimal Function for testing
         let test_function = Function::new(0);
-        
+
         // Create the nested structure like in handle_analyzed_result
-        let mut file_map: HashMap<String, File> = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+        let mut file_map: HashMap<String, File> =
+            HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
         file_map.insert(
             file_name.clone(),
             File {
@@ -334,19 +345,20 @@ mod tests {
             },
         );
         let krate = Crate(file_map);
-        
-        let mut ws_map: HashMap<String, Crate> = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+
+        let mut ws_map: HashMap<String, Crate> =
+            HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
         ws_map.insert(crate_name.clone(), krate);
         let workspace = Workspace(ws_map);
-        
+
         // Verify structure
         assert_eq!(workspace.0.len(), 1);
         assert!(workspace.0.contains_key(&crate_name));
-        
+
         let crate_ref = &workspace.0[&crate_name];
         assert_eq!(crate_ref.0.len(), 1);
         assert!(crate_ref.0.contains_key(&file_name));
-        
+
         let file_ref = &crate_ref.0[&file_name];
         assert_eq!(file_ref.items.len(), 1);
         assert_eq!(file_ref.items[0].fn_id, 0);
@@ -356,8 +368,9 @@ mod tests {
     fn test_json_serialization_output() {
         // Test that the workspace structure can be serialized to JSON
         let test_function = Function::new(42);
-        
-        let mut file_map: HashMap<String, File> = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+
+        let mut file_map: HashMap<String, File> =
+            HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
         file_map.insert(
             "main.rs".to_string(),
             File {
@@ -365,15 +378,16 @@ mod tests {
             },
         );
         let krate = Crate(file_map);
-        
-        let mut ws_map: HashMap<String, Crate> = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+
+        let mut ws_map: HashMap<String, Crate> =
+            HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
         ws_map.insert("my_crate".to_string(), krate);
         let workspace = Workspace(ws_map);
-        
+
         // Test serialization
         let json_result = serde_json::to_string(&workspace);
         assert!(json_result.is_ok());
-        
+
         let json_string = json_result.unwrap();
         assert!(!json_string.is_empty());
         assert!(json_string.contains("my_crate"));
@@ -385,12 +399,12 @@ mod tests {
     fn test_stack_size_configuration() {
         // Test that the runtime is configured with appropriate stack size
         const EXPECTED_STACK_SIZE: usize = 128 * 1024 * 1024; // 128 MB
-        
+
         // We can't directly inspect the runtime's stack size, but we can verify
         // the constant is reasonable
         assert!(EXPECTED_STACK_SIZE > 1024 * 1024); // At least 1MB
         assert!(EXPECTED_STACK_SIZE <= 1024 * 1024 * 1024); // At most 1GB
-        
+
         // Test that the value is a power of 2 times some base unit
         assert_eq!(EXPECTED_STACK_SIZE % (1024 * 1024), 0); // Multiple of 1MB
     }
@@ -399,7 +413,7 @@ mod tests {
     fn test_local_crate_constant() {
         // Test that LOCAL_CRATE constant is available and can be used
         use rustc_hir::def_id::LOCAL_CRATE;
-        
+
         // LOCAL_CRATE should be a valid CrateNum
         // We can't test much about it without a TyCtxt, but we can verify it exists
         let _crate_num = LOCAL_CRATE;
@@ -408,15 +422,15 @@ mod tests {
     #[test]
     fn test_config_options_simulation() {
         // Test the configuration options that would be set in AnalyzerCallback::config
-        
+
         // Test mir_opt_level
         let mir_opt_level = Some(0);
         assert_eq!(mir_opt_level, Some(0));
-        
+
         // Test that polonius config enum value exists
         use rustc_session::config::Polonius;
         let _polonius_config = Polonius::Next;
-        
+
         // Test that incremental compilation is disabled
         let incremental = None::<std::path::PathBuf>;
         assert!(incremental.is_none());
@@ -425,13 +439,13 @@ mod tests {
     #[test]
     fn test_error_handling_pattern() {
         // Test the error handling pattern used with rustc_driver::catch_fatal_errors
-        
+
         // Simulate successful operation
         let success_result = || -> Result<(), ()> { Ok(()) };
         let result = success_result();
         assert!(result.is_ok());
-        
-        // Simulate error operation  
+
+        // Simulate error operation
         let error_result = || -> Result<(), ()> { Err(()) };
         let result = error_result();
         assert!(result.is_err());

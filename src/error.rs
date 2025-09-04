@@ -187,11 +187,13 @@ mod tests {
         for error in errors {
             let display_str = error.to_string();
             assert!(!display_str.is_empty());
-            
+
             // Each error type should have a descriptive prefix
             match error {
                 RustOwlError::Io(_) => assert!(display_str.starts_with("I/O error:")),
-                RustOwlError::CargoMetadata(_) => assert!(display_str.starts_with("Cargo metadata error:")),
+                RustOwlError::CargoMetadata(_) => {
+                    assert!(display_str.starts_with("Cargo metadata error:"))
+                }
                 RustOwlError::Toolchain(_) => assert!(display_str.starts_with("Toolchain error:")),
                 RustOwlError::Json(_) => assert!(display_str.starts_with("JSON error:")),
                 RustOwlError::Cache(_) => assert!(display_str.starts_with("Cache error:")),
@@ -213,11 +215,11 @@ mod tests {
     #[test]
     fn test_std_error_trait() {
         let error = RustOwlError::Analysis("test analysis error".to_string());
-        
+
         // Test that it implements std::error::Error
         let std_error: &dyn std::error::Error = &error;
         assert_eq!(std_error.to_string(), "Analysis error: test analysis error");
-        
+
         // Test source() method (should return None for our simple errors)
         assert!(std_error.source().is_none());
     }
@@ -291,12 +293,10 @@ mod tests {
             Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "first context"),
             _ => panic!("Expected Analysis error"),
         }
-        
+
         // Test successful operation with context chaining
         let option: Option<i32> = Some(42);
-        let result = option
-            .context("should not be used")
-            .and_then(|x| Ok(x * 2));
+        let result = option.context("should not be used").and_then(|x| Ok(x * 2));
         assert_eq!(result.unwrap(), 84);
     }
 
@@ -316,10 +316,10 @@ mod tests {
     fn test_error_context_with_complex_types() {
         // Test context with more complex error types
         use std::num::ParseIntError;
-        
+
         let parse_result: std::result::Result<i32, ParseIntError> = "not_a_number".parse();
         let with_context = parse_result.context("failed to parse number");
-        
+
         assert!(with_context.is_err());
         match with_context {
             Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "failed to parse number"),
@@ -331,11 +331,11 @@ mod tests {
     fn test_error_context_dynamic_messages() {
         // Test with_context with dynamic message generation
         let counter = 5;
-        let result: std::result::Result<i32, std::io::Error> = 
+        let result: std::result::Result<i32, std::io::Error> =
             Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"));
-        
+
         let with_context = result.with_context(|| format!("operation {} failed", counter));
-        
+
         assert!(with_context.is_err());
         match with_context {
             Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "operation 5 failed"),
@@ -369,10 +369,10 @@ mod tests {
         // Test that our error type implements Send and Sync
         fn assert_send<T: Send>() {}
         fn assert_sync<T: Sync>() {}
-        
+
         assert_send::<RustOwlError>();
         assert_sync::<RustOwlError>();
-        
+
         // Test that we can pass errors across threads (conceptually)
         let error = RustOwlError::Analysis("thread test".to_string());
         let error_clone = format!("{}", error); // This would work across threads
@@ -382,22 +382,22 @@ mod tests {
     #[test]
     fn test_error_context_trait_generic_bounds() {
         // Test that ErrorContext works with various error types that implement std::error::Error
-        
+
         // Test with a custom error type
         #[derive(Debug)]
         struct CustomError;
-        
+
         impl std::fmt::Display for CustomError {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "custom error")
             }
         }
-        
+
         impl std::error::Error for CustomError {}
-        
+
         let custom_result: std::result::Result<i32, CustomError> = Err(CustomError);
         let with_context = custom_result.context("custom error context");
-        
+
         assert!(with_context.is_err());
         match with_context {
             Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "custom error context"),

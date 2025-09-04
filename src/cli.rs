@@ -108,7 +108,7 @@ mod tests {
         // Test parsing empty args (should work with defaults)
         let args = vec!["rustowl"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         assert!(!cli.version);
         assert_eq!(cli.quiet, 0);
         assert!(!cli.stdio);
@@ -160,7 +160,7 @@ mod tests {
     fn test_cli_combined_flags() {
         let args = vec!["rustowl", "-V", "--quiet", "--stdio"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         assert!(cli.version);
         assert_eq!(cli.quiet, 1);
         assert!(cli.stdio);
@@ -170,7 +170,7 @@ mod tests {
     fn test_check_command_default() {
         let args = vec!["rustowl", "check"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Some(Commands::Check(check)) => {
                 assert!(check.path.is_none());
@@ -185,7 +185,7 @@ mod tests {
     fn test_check_command_with_path() {
         let args = vec!["rustowl", "check", "src/lib.rs"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Some(Commands::Check(check)) => {
                 assert_eq!(check.path, Some(PathBuf::from("src/lib.rs")));
@@ -200,7 +200,7 @@ mod tests {
     fn test_check_command_with_flags() {
         let args = vec!["rustowl", "check", "--all-targets", "--all-features"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Some(Commands::Check(check)) => {
                 assert!(check.path.is_none());
@@ -213,9 +213,15 @@ mod tests {
 
     #[test]
     fn test_check_command_comprehensive() {
-        let args = vec!["rustowl", "check", "./target", "--all-targets", "--all-features"];
+        let args = vec![
+            "rustowl",
+            "check",
+            "./target",
+            "--all-targets",
+            "--all-features",
+        ];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Some(Commands::Check(check)) => {
                 assert_eq!(check.path, Some(PathBuf::from("./target")));
@@ -230,7 +236,7 @@ mod tests {
     fn test_clean_command() {
         let args = vec!["rustowl", "clean"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Some(Commands::Clean) => {}
             _ => panic!("Expected Clean command"),
@@ -241,7 +247,7 @@ mod tests {
     fn test_toolchain_command_default() {
         let args = vec!["rustowl", "toolchain"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Some(Commands::Toolchain(toolchain)) => {
                 assert!(toolchain.command.is_none());
@@ -254,17 +260,18 @@ mod tests {
     fn test_toolchain_install_default() {
         let args = vec!["rustowl", "toolchain", "install"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
-            Some(Commands::Toolchain(toolchain)) => {
-                match toolchain.command {
-                    Some(ToolchainCommands::Install { path, skip_rustowl_toolchain }) => {
-                        assert!(path.is_none());
-                        assert!(!skip_rustowl_toolchain);
-                    }
-                    _ => panic!("Expected Install subcommand"),
+            Some(Commands::Toolchain(toolchain)) => match toolchain.command {
+                Some(ToolchainCommands::Install {
+                    path,
+                    skip_rustowl_toolchain,
+                }) => {
+                    assert!(path.is_none());
+                    assert!(!skip_rustowl_toolchain);
                 }
-            }
+                _ => panic!("Expected Install subcommand"),
+            },
             _ => panic!("Expected Toolchain command"),
         }
     }
@@ -273,36 +280,43 @@ mod tests {
     fn test_toolchain_install_with_path() {
         let args = vec!["rustowl", "toolchain", "install", "--path", "/opt/rustowl"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
-            Some(Commands::Toolchain(toolchain)) => {
-                match toolchain.command {
-                    Some(ToolchainCommands::Install { path, skip_rustowl_toolchain }) => {
-                        assert_eq!(path, Some(PathBuf::from("/opt/rustowl")));
-                        assert!(!skip_rustowl_toolchain);
-                    }
-                    _ => panic!("Expected Install subcommand"),
+            Some(Commands::Toolchain(toolchain)) => match toolchain.command {
+                Some(ToolchainCommands::Install {
+                    path,
+                    skip_rustowl_toolchain,
+                }) => {
+                    assert_eq!(path, Some(PathBuf::from("/opt/rustowl")));
+                    assert!(!skip_rustowl_toolchain);
                 }
-            }
+                _ => panic!("Expected Install subcommand"),
+            },
             _ => panic!("Expected Toolchain command"),
         }
     }
 
     #[test]
     fn test_toolchain_install_skip_rustowl() {
-        let args = vec!["rustowl", "toolchain", "install", "--skip-rustowl-toolchain"];
+        let args = vec![
+            "rustowl",
+            "toolchain",
+            "install",
+            "--skip-rustowl-toolchain",
+        ];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
-            Some(Commands::Toolchain(toolchain)) => {
-                match toolchain.command {
-                    Some(ToolchainCommands::Install { path, skip_rustowl_toolchain }) => {
-                        assert!(path.is_none());
-                        assert!(skip_rustowl_toolchain);
-                    }
-                    _ => panic!("Expected Install subcommand"),
+            Some(Commands::Toolchain(toolchain)) => match toolchain.command {
+                Some(ToolchainCommands::Install {
+                    path,
+                    skip_rustowl_toolchain,
+                }) => {
+                    assert!(path.is_none());
+                    assert!(skip_rustowl_toolchain);
                 }
-            }
+                _ => panic!("Expected Install subcommand"),
+            },
             _ => panic!("Expected Toolchain command"),
         }
     }
@@ -310,22 +324,26 @@ mod tests {
     #[test]
     fn test_toolchain_install_comprehensive() {
         let args = vec![
-            "rustowl", "toolchain", "install", 
-            "--path", "./local-toolchain", 
-            "--skip-rustowl-toolchain"
+            "rustowl",
+            "toolchain",
+            "install",
+            "--path",
+            "./local-toolchain",
+            "--skip-rustowl-toolchain",
         ];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
-            Some(Commands::Toolchain(toolchain)) => {
-                match toolchain.command {
-                    Some(ToolchainCommands::Install { path, skip_rustowl_toolchain }) => {
-                        assert_eq!(path, Some(PathBuf::from("./local-toolchain")));
-                        assert!(skip_rustowl_toolchain);
-                    }
-                    _ => panic!("Expected Install subcommand"),
+            Some(Commands::Toolchain(toolchain)) => match toolchain.command {
+                Some(ToolchainCommands::Install {
+                    path,
+                    skip_rustowl_toolchain,
+                }) => {
+                    assert_eq!(path, Some(PathBuf::from("./local-toolchain")));
+                    assert!(skip_rustowl_toolchain);
                 }
-            }
+                _ => panic!("Expected Install subcommand"),
+            },
             _ => panic!("Expected Toolchain command"),
         }
     }
@@ -334,14 +352,12 @@ mod tests {
     fn test_toolchain_uninstall() {
         let args = vec!["rustowl", "toolchain", "uninstall"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
-            Some(Commands::Toolchain(toolchain)) => {
-                match toolchain.command {
-                    Some(ToolchainCommands::Uninstall) => {}
-                    _ => panic!("Expected Uninstall subcommand"),
-                }
-            }
+            Some(Commands::Toolchain(toolchain)) => match toolchain.command {
+                Some(ToolchainCommands::Uninstall) => {}
+                _ => panic!("Expected Uninstall subcommand"),
+            },
             _ => panic!("Expected Toolchain command"),
         }
     }
@@ -349,10 +365,10 @@ mod tests {
     #[test]
     fn test_completions_command() {
         use crate::shells::Shell;
-        
+
         let args = vec!["rustowl", "completions", "bash"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Some(Commands::Completions(completions)) => {
                 assert_eq!(completions.shell, Shell::Bash);
@@ -365,7 +381,7 @@ mod tests {
         for shell in shells {
             let args = vec!["rustowl", "completions", shell];
             let cli = Cli::try_parse_from(args).unwrap();
-            
+
             match cli.command {
                 Some(Commands::Completions(_)) => {}
                 _ => panic!("Expected Completions command for shell: {}", shell),
@@ -396,7 +412,7 @@ mod tests {
             stdio: true,
             command: Some(Commands::Clean),
         };
-        
+
         let debug_str = format!("{:?}", cli);
         assert!(debug_str.contains("version: true"));
         assert!(debug_str.contains("quiet: 2"));
@@ -411,7 +427,7 @@ mod tests {
             all_targets: true,
             all_features: false,
         });
-        
+
         let debug_str = format!("{:?}", check);
         assert!(debug_str.contains("Check"));
         assert!(debug_str.contains("test"));
@@ -421,9 +437,16 @@ mod tests {
     #[test]
     fn test_complex_cli_scenarios() {
         // Test multiple flags with command
-        let args = vec!["rustowl", "-qqq", "--stdio", "check", "./src", "--all-targets"];
+        let args = vec![
+            "rustowl",
+            "-qqq",
+            "--stdio",
+            "check",
+            "./src",
+            "--all-targets",
+        ];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         assert_eq!(cli.quiet, 3);
         assert!(cli.stdio);
         match cli.command {
