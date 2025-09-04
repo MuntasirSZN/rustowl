@@ -786,10 +786,10 @@ mod tests {
         for runtime_path in runtime_paths {
             let runtime = PathBuf::from(runtime_path);
             let sysroot = sysroot_from_runtime(&runtime);
-            
+
             // Should always contain the toolchain name
             assert!(sysroot.to_string_lossy().contains(TOOLCHAIN));
-            
+
             // Should be a subdirectory of runtime
             if !runtime_path.is_empty() {
                 assert!(sysroot.starts_with(&runtime));
@@ -800,19 +800,15 @@ mod tests {
     #[test]
     fn test_toolchain_constants_integrity() {
         // Test that build-time constants are valid
-        
-        // TOOLCHAIN should be non-empty and reasonable format
-        assert!(!TOOLCHAIN.is_empty());
+
         assert!(TOOLCHAIN.len() > 5); // Should be something like "nightly-2024-01-01"
-        
-        // HOST_TUPLE should be non-empty and contain target architecture
-        assert!(!HOST_TUPLE.is_empty());
+
         assert!(HOST_TUPLE.contains('-')); // Should contain hyphens separating components
-        
+
         // TOOLCHAIN_CHANNEL should be a known channel
         let valid_channels = ["stable", "beta", "nightly"];
         assert!(valid_channels.contains(&TOOLCHAIN_CHANNEL));
-        
+
         // TOOLCHAIN_DATE should be valid format if present
         if let Some(date) = TOOLCHAIN_DATE {
             assert!(!date.is_empty());
@@ -836,10 +832,10 @@ mod tests {
         for base in base_paths {
             let runtime = PathBuf::from(base);
             let sysroot = sysroot_from_runtime(&runtime);
-            
+
             // Operations should not panic
             assert!(sysroot.is_absolute() || sysroot.is_relative());
-            
+
             // Should maintain path structure
             let parent = sysroot.parent();
             assert!(parent.is_some() || sysroot == PathBuf::from(""));
@@ -854,15 +850,15 @@ mod tests {
             ("not_a_number", None),
             ("12345", Some(12345)),
             ("0", Some(0)),
-            ("-1", None), // Negative numbers should be invalid
+            ("-1", None),                    // Negative numbers should be invalid
             ("999999999999999999999", None), // Overflow should be handled
-            ("42.5", None), // Float should be invalid
-            ("  123  ", None), // Whitespace should be invalid
+            ("42.5", None),                  // Float should be invalid
+            ("  123  ", None),               // Whitespace should be invalid
         ];
 
         for (input, expected) in test_vars {
             let result = input.parse::<usize>().ok();
-            assert_eq!(result, expected, "Failed for input: {}", input);
+            assert_eq!(result, expected, "Failed for input: {input}");
         }
     }
 
@@ -881,12 +877,12 @@ mod tests {
         let invalid_components = [
             "",
             " ",
-            "rust std", // Space
+            "rust std",  // Space
             "rust\nstd", // Newline
             "rust\tstd", // Tab
-            "rust/std", // Slash
-            "rust?std", // Question mark
-            "rust#std", // Hash
+            "rust/std",  // Slash
+            "rust?std",  // Question mark
+            "rust#std",  // Hash
         ];
 
         for component in valid_components {
@@ -898,14 +894,14 @@ mod tests {
         }
 
         for component in invalid_components {
-            let is_invalid = component.is_empty() 
-                || component.contains(' ') 
+            let is_invalid = component.is_empty()
+                || component.contains(' ')
                 || component.contains('\n')
                 || component.contains('\t')
                 || component.contains('/')
                 || component.contains('?')
                 || component.contains('#');
-            assert!(is_invalid, "Component should be invalid: {}", component);
+            assert!(is_invalid, "Component should be invalid: {component}");
         }
     }
 
@@ -922,7 +918,7 @@ mod tests {
         // Test with valid directory
         let sub_dir = temp_path.join("subdir");
         fs::create_dir(&sub_dir).unwrap();
-        
+
         let file_path = sub_dir.join("test.txt");
         fs::write(&file_path, "test content").unwrap();
 
@@ -938,17 +934,16 @@ mod tests {
 
     #[test]
     fn test_fallback_runtime_dir_comprehensive() {
-        
         // Test /opt/rustowl path construction
         let opt_path = PathBuf::from("/opt/rustowl");
         assert_eq!(opt_path.to_string_lossy(), "/opt/rustowl");
-        
+
         // Test home directory path construction
         if let Some(home) = std::env::var_os("HOME") {
             let home_path = PathBuf::from(home).join(".rustowl");
             assert!(home_path.ends_with(".rustowl"));
         }
-        
+
         // Test current exe path construction (simulate)
         let current_exe_parent = PathBuf::from("/usr/bin");
         assert!(current_exe_parent.is_absolute());
@@ -957,29 +952,19 @@ mod tests {
     #[test]
     fn test_path_join_operations() {
         // Test path joining operations with various inputs
-        let base_paths = [
-            "/opt/rustowl",
-            "/home/user/.rustowl",
-            "relative/path",
-        ];
+        let base_paths = ["/opt/rustowl", "/home/user/.rustowl", "relative/path"];
 
-        let components = [
-            "sysroot",
-            TOOLCHAIN,
-            "bin",
-            "lib",
-            "rustc",
-        ];
+        let components = ["sysroot", TOOLCHAIN, "bin", "lib", "rustc"];
 
         for base in base_paths {
             let base_path = PathBuf::from(base);
-            
+
             for component in components {
                 let joined = base_path.join(component);
-                
+
                 // Should contain the component
                 assert!(joined.to_string_lossy().contains(component));
-                
+
                 // Should be longer than the base path
                 assert!(joined.to_string_lossy().len() > base_path.to_string_lossy().len());
             }
@@ -990,13 +975,13 @@ mod tests {
     fn test_command_environment_setup() {
         // Test command environment variable setup logic
         use tokio::process::Command;
-        
+
         let sysroot = PathBuf::from("/opt/rustowl/sysroot/nightly-2024-01-01");
         let mut cmd = Command::new("test");
-        
+
         // Test set_rustc_env function
         set_rustc_env(&mut cmd, &sysroot);
-        
+
         // The command should be properly configured (we can't directly inspect env vars,
         // but we can verify the function doesn't panic)
         let program = cmd.as_std().get_program();
@@ -1008,19 +993,19 @@ mod tests {
         // Test cross-platform path handling
         let unix_style = "/opt/rustowl/sysroot";
         let windows_style = r"C:\opt\rustowl\sysroot";
-        
+
         // Both should be valid paths on their respective platforms
         let unix_path = PathBuf::from(unix_style);
         let windows_path = PathBuf::from(windows_style);
-        
+
         // Test path operations don't panic
         let _unix_components: Vec<_> = unix_path.components().collect();
         let _windows_components: Vec<_> = windows_path.components().collect();
-        
+
         // Test sysroot construction with different path styles
         let unix_sysroot = sysroot_from_runtime(&unix_path);
         let windows_sysroot = sysroot_from_runtime(&windows_path);
-        
+
         assert!(unix_sysroot.to_string_lossy().contains(TOOLCHAIN));
         assert!(windows_sysroot.to_string_lossy().contains(TOOLCHAIN));
     }

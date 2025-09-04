@@ -193,17 +193,17 @@ mod tests {
     fn test_initialize_logging_multiple_calls() {
         // Test that multiple calls to initialize_logging are safe
         use tracing_subscriber::filter::LevelFilter;
-        
+
         initialize_logging(LevelFilter::INFO);
         initialize_logging(LevelFilter::DEBUG); // Should not panic
-        initialize_logging(LevelFilter::WARN);  // Should not panic
+        initialize_logging(LevelFilter::WARN); // Should not panic
     }
 
     #[test]
     fn test_initialize_logging_different_levels() {
         // Test initialization with different log levels
         use tracing_subscriber::filter::LevelFilter;
-        
+
         // Test all supported levels
         let levels = [
             LevelFilter::OFF,
@@ -213,7 +213,7 @@ mod tests {
             LevelFilter::DEBUG,
             LevelFilter::TRACE,
         ];
-        
+
         for level in levels {
             // Each call should complete without panicking
             initialize_logging(level);
@@ -224,7 +224,7 @@ mod tests {
     fn test_module_re_exports() {
         // Test that re-exports work correctly
         use crate::Backend;
-        
+
         // Backend should be accessible from the root module
         let type_name = std::any::type_name::<Backend>();
         assert!(type_name.contains("Backend"));
@@ -235,13 +235,13 @@ mod tests {
     fn test_public_module_access() {
         // Test that all public modules are accessible
         use crate::{cache, error, models, shells, utils};
-        
+
         // Test basic functionality from each module
         let _cache_config = cache::CacheConfig::default();
         let _shell = shells::Shell::Bash;
         let _error = error::RustOwlError::Cache("test".to_string());
         let _loc = models::Loc(42);
-        
+
         // Test utils functions
         let range1 = models::Range::new(models::Loc(0), models::Loc(5)).unwrap();
         let range2 = models::Range::new(models::Loc(3), models::Loc(8)).unwrap();
@@ -252,19 +252,19 @@ mod tests {
     fn test_error_types_integration() {
         // Test error handling integration across modules
         use crate::error::RustOwlError;
-        
+
         let errors = [
             RustOwlError::Cache("cache error".to_string()),
             RustOwlError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "test")),
             RustOwlError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err()),
             RustOwlError::Toolchain("toolchain error".to_string()),
         ];
-        
+
         for error in errors {
             // Each error should display properly
-            let display = format!("{}", error);
+            let display = format!("{error}");
             assert!(!display.is_empty());
-            
+
             // Each error should have a source (for some types)
             let _source = std::error::Error::source(&error);
         }
@@ -274,17 +274,17 @@ mod tests {
     fn test_data_model_serialization() {
         // Test that data models can be serialized/deserialized
         use crate::models::*;
-        
+
         // Test basic types
         let loc = Loc(42);
         let range = Range::new(Loc(0), Loc(10)).unwrap();
         let fn_local = FnLocal::new(1, 2);
-        
+
         // Test serialization (implicitly tests serde derives)
         let loc_json = serde_json::to_string(&loc).unwrap();
         let range_json = serde_json::to_string(&range).unwrap();
         let fn_local_json = serde_json::to_string(&fn_local).unwrap();
-        
+
         // Test deserialization
         let _loc_back: Loc = serde_json::from_str(&loc_json).unwrap();
         let _range_back: Range = serde_json::from_str(&range_json).unwrap();
@@ -295,37 +295,37 @@ mod tests {
     fn test_complex_data_structures() {
         // Test creation and manipulation of complex nested structures
         use crate::models::*;
-        
+
         // Create a workspace with multiple crates
         let mut workspace = Workspace(FoldIndexMap::default());
-        
+
         let mut crate1 = Crate(FoldIndexMap::default());
         let mut file1 = File::new();
-        
+
         let mut function = Function::new(1);
         let mut basic_block = MirBasicBlock::new();
-        
+
         // Add statements to basic block
         basic_block.statements.push(MirStatement::Other {
             range: Range::new(Loc(0), Loc(5)).unwrap(),
         });
-        
+
         function.basic_blocks.push(basic_block);
         file1.items.push(function);
         crate1.0.insert("src/lib.rs".to_string(), file1);
         workspace.0.insert("lib1".to_string(), crate1);
-        
+
         // Verify structure integrity
         assert_eq!(workspace.0.len(), 1);
         assert!(workspace.0.contains_key("lib1"));
-        
+
         let crate_ref = workspace.0.get("lib1").unwrap();
         assert_eq!(crate_ref.0.len(), 1);
         assert!(crate_ref.0.contains_key("src/lib.rs"));
-        
+
         let file_ref = crate_ref.0.get("src/lib.rs").unwrap();
         assert_eq!(file_ref.items.len(), 1);
-        
+
         let func_ref = &file_ref.items[0];
         assert_eq!(func_ref.basic_blocks.len(), 1);
         assert_eq!(func_ref.basic_blocks[0].statements.len(), 1);

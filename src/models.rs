@@ -880,21 +880,41 @@ mod tests {
         for var in &variables {
             let json = serde_json::to_string(var).unwrap();
             let deserialized: MirVariable = serde_json::from_str(&json).unwrap();
-            
+
             // Verify the deserialized variable matches
             match (var, &deserialized) {
-                (MirVariable::User { index: i1, live: l1, dead: d1 }, 
-                 MirVariable::User { index: i2, live: l2, dead: d2 }) => {
+                (
+                    MirVariable::User {
+                        index: i1,
+                        live: l1,
+                        dead: d1,
+                    },
+                    MirVariable::User {
+                        index: i2,
+                        live: l2,
+                        dead: d2,
+                    },
+                ) => {
                     assert_eq!(i1, i2);
                     assert_eq!(l1, l2);
                     assert_eq!(d1, d2);
-                },
-                (MirVariable::Other { index: i1, live: l1, dead: d1 }, 
-                 MirVariable::Other { index: i2, live: l2, dead: d2 }) => {
+                }
+                (
+                    MirVariable::Other {
+                        index: i1,
+                        live: l1,
+                        dead: d1,
+                    },
+                    MirVariable::Other {
+                        index: i2,
+                        live: l2,
+                        dead: d2,
+                    },
+                ) => {
                     assert_eq!(i1, i2);
                     assert_eq!(l1, l2);
                     assert_eq!(d1, d2);
-                },
+                }
                 _ => panic!("Variable types don't match after deserialization"),
             }
         }
@@ -907,9 +927,15 @@ mod tests {
         let fn_local = FnLocal::new(1, 2);
 
         let statements = vec![
-            MirStatement::StorageLive { target_local: fn_local, range },
-            MirStatement::StorageDead { target_local: fn_local, range },
-            MirStatement::Assign { 
+            MirStatement::StorageLive {
+                target_local: fn_local,
+                range,
+            },
+            MirStatement::StorageDead {
+                target_local: fn_local,
+                range,
+            },
+            MirStatement::Assign {
                 target_local: fn_local,
                 range,
                 rval: None,
@@ -922,41 +948,64 @@ mod tests {
             // Test serialization
             let json = serde_json::to_string(stmt).unwrap();
             let deserialized: MirStatement = serde_json::from_str(&json).unwrap();
-            
+
             // Verify basic properties
             match stmt {
-                MirStatement::StorageLive { target_local, range } => {
-                    if let MirStatement::StorageLive { target_local: l2, range: r2 } = deserialized {
+                MirStatement::StorageLive {
+                    target_local,
+                    range,
+                } => {
+                    if let MirStatement::StorageLive {
+                        target_local: l2,
+                        range: r2,
+                    } = deserialized
+                    {
                         assert_eq!(*target_local, l2);
                         assert_eq!(*range, r2);
                     } else {
                         panic!("Deserialization changed statement type");
                     }
-                },
-                MirStatement::StorageDead { target_local, range } => {
-                    if let MirStatement::StorageDead { target_local: l2, range: r2 } = deserialized {
+                }
+                MirStatement::StorageDead {
+                    target_local,
+                    range,
+                } => {
+                    if let MirStatement::StorageDead {
+                        target_local: l2,
+                        range: r2,
+                    } = deserialized
+                    {
                         assert_eq!(*target_local, l2);
                         assert_eq!(*range, r2);
                     } else {
                         panic!("Deserialization changed statement type");
                     }
-                },
-                MirStatement::Assign { target_local, range, rval: _ } => {
-                    if let MirStatement::Assign { target_local: l2, range: range2, rval: _ } = deserialized {
+                }
+                MirStatement::Assign {
+                    target_local,
+                    range,
+                    rval: _,
+                } => {
+                    if let MirStatement::Assign {
+                        target_local: l2,
+                        range: range2,
+                        rval: _,
+                    } = deserialized
+                    {
                         assert_eq!(*target_local, l2);
                         assert_eq!(*range, range2);
                         // Note: Not comparing rval since MirRval doesn't implement PartialEq
                     } else {
                         panic!("Deserialization changed statement type");
                     }
-                },
+                }
                 MirStatement::Other { range } => {
                     if let MirStatement::Other { range: r2 } = deserialized {
                         assert_eq!(*range, r2);
                     } else {
                         panic!("Deserialization changed statement type");
                     }
-                },
+                }
             }
         }
     }
@@ -968,8 +1017,14 @@ mod tests {
         let fn_local = FnLocal::new(1, 2);
 
         let terminators = vec![
-            MirTerminator::Drop { local: fn_local, range },
-            MirTerminator::Call { destination_local: fn_local, fn_span: range },
+            MirTerminator::Drop {
+                local: fn_local,
+                range,
+            },
+            MirTerminator::Call {
+                destination_local: fn_local,
+                fn_span: range,
+            },
             MirTerminator::Other { range },
         ];
 
@@ -977,32 +1032,43 @@ mod tests {
             // Test serialization
             let json = serde_json::to_string(terminator).unwrap();
             let deserialized: MirTerminator = serde_json::from_str(&json).unwrap();
-            
+
             // Verify deserialization preserves type and data
             match terminator {
                 MirTerminator::Drop { local, range } => {
-                    if let MirTerminator::Drop { local: l2, range: r2 } = deserialized {
+                    if let MirTerminator::Drop {
+                        local: l2,
+                        range: r2,
+                    } = deserialized
+                    {
                         assert_eq!(*local, l2);
                         assert_eq!(*range, r2);
                     } else {
                         panic!("Deserialization changed terminator type");
                     }
-                },
-                MirTerminator::Call { destination_local, fn_span } => {
-                    if let MirTerminator::Call { destination_local: l2, fn_span: r2 } = deserialized {
+                }
+                MirTerminator::Call {
+                    destination_local,
+                    fn_span,
+                } => {
+                    if let MirTerminator::Call {
+                        destination_local: l2,
+                        fn_span: r2,
+                    } = deserialized
+                    {
                         assert_eq!(*destination_local, l2);
                         assert_eq!(*fn_span, r2);
                     } else {
                         panic!("Deserialization changed terminator type");
                     }
-                },
+                }
                 MirTerminator::Other { range } => {
                     if let MirTerminator::Other { range: r2 } = deserialized {
                         assert_eq!(*range, r2);
                     } else {
                         panic!("Deserialization changed terminator type");
                     }
-                },
+                }
             }
         }
     }
@@ -1011,46 +1077,46 @@ mod tests {
     fn test_complex_workspace_operations() {
         // Test complex workspace creation and manipulation - simplified version
         let mut workspace = Workspace(FoldIndexMap::default());
-        
+
         // Create a simple crate structure
         let crate_name = "test_crate".to_string();
         let mut crate_obj = Crate(FoldIndexMap::default());
-        
+
         let file_name = "src/lib.rs".to_string();
         let mut file = File::new();
-        
+
         let mut function = Function::new(1);
         let mut basic_block = MirBasicBlock::new();
-        
+
         // Add statements to basic block
         basic_block.statements.push(MirStatement::Other {
             range: Range::new(Loc(0), Loc(5)).unwrap(),
         });
-        
+
         function.basic_blocks.push(basic_block);
         file.items.push(function);
         crate_obj.0.insert(file_name.clone(), file);
         workspace.0.insert(crate_name.clone(), crate_obj);
-        
+
         // Verify the structure
         assert_eq!(workspace.0.len(), 1);
         assert!(workspace.0.contains_key(&crate_name));
-        
+
         let crate_ref = workspace.0.get(&crate_name).unwrap();
         assert_eq!(crate_ref.0.len(), 1);
         assert!(crate_ref.0.contains_key(&file_name));
-        
+
         let file_ref = crate_ref.0.get(&file_name).unwrap();
         assert_eq!(file_ref.items.len(), 1);
-        
+
         let func_ref = &file_ref.items[0];
         assert_eq!(func_ref.basic_blocks.len(), 1);
         assert_eq!(func_ref.basic_blocks[0].statements.len(), 1);
-        
+
         // Test workspace serialization
         let json = serde_json::to_string(&workspace).unwrap();
         let deserialized: Workspace = serde_json::from_str(&json).unwrap();
-        
+
         // Verify the deserialized workspace maintains structure
         assert_eq!(workspace.0.len(), deserialized.0.len());
     }
@@ -1058,60 +1124,67 @@ mod tests {
     #[test]
     fn test_loc_arithmetic_comprehensive() {
         // Comprehensive testing of Loc arithmetic operations
-        
+
         // Test addition with various values
         let test_cases = [
             (Loc(0), 5, Loc(5)),
             (Loc(10), -5, Loc(5)),
-            (Loc(0), -10, Loc(0)), // Should saturate at 0
+            (Loc(0), -10, Loc(0)),                  // Should saturate at 0
             (Loc(u32::MAX - 5), 10, Loc(u32::MAX)), // Should saturate at MAX
-            (Loc(100), 0, Loc(100)), // Addition by zero
+            (Loc(100), 0, Loc(100)),                // Addition by zero
         ];
-        
+
         for (start, add_val, expected) in test_cases {
             let result = start + add_val;
-            assert_eq!(result, expected, 
-                "Failed: {} + {} = {}, expected {}", 
-                start.0, add_val, result.0, expected.0);
+            assert_eq!(
+                result, expected,
+                "Failed: {} + {} = {}, expected {}",
+                start.0, add_val, result.0, expected.0
+            );
         }
-        
+
         // Test subtraction with various values
         let sub_test_cases = [
             (Loc(10), 5, Loc(5)),
             (Loc(5), -5, Loc(10)),
-            (Loc(5), 10, Loc(0)), // Should saturate at 0
+            (Loc(5), 10, Loc(0)),                    // Should saturate at 0
             (Loc(u32::MAX - 5), -10, Loc(u32::MAX)), // Should saturate at MAX
-            (Loc(100), 0, Loc(100)), // Subtraction by zero
+            (Loc(100), 0, Loc(100)),                 // Subtraction by zero
         ];
-        
+
         for (start, sub_val, expected) in sub_test_cases {
             let result = start - sub_val;
-            assert_eq!(result, expected,
+            assert_eq!(
+                result, expected,
                 "Failed: {} - {} = {}, expected {}",
-                start.0, sub_val, result.0, expected.0);
+                start.0, sub_val, result.0, expected.0
+            );
         }
     }
 
     #[test]
     fn test_range_edge_cases_comprehensive() {
         // Test Range creation with edge cases
-        
+
         // Valid ranges
         let valid_ranges = [
-            (Loc(0), Loc(1)), // Single character
-            (Loc(0), Loc(u32::MAX)), // Maximum range
+            (Loc(0), Loc(1)),                   // Single character
+            (Loc(0), Loc(u32::MAX)),            // Maximum range
             (Loc(u32::MAX - 1), Loc(u32::MAX)), // Single character at end
         ];
-        
+
         for (start, end) in valid_ranges {
             let range = Range::new(start, end);
-            assert!(range.is_some(), "Should create valid range: {:?} to {:?}", start, end);
-            
+            assert!(
+                range.is_some(),
+                "Should create valid range: {start:?} to {end:?}"
+            );
+
             let range = range.unwrap();
             assert_eq!(range.from(), start);
             assert_eq!(range.until(), end);
         }
-        
+
         // Invalid ranges (end <= start)
         let invalid_ranges = [
             (Loc(0), Loc(0)), // Single point (invalid for Range)
@@ -1120,45 +1193,48 @@ mod tests {
             (Loc(u32::MAX), Loc(0)),
             (Loc(u32::MAX), Loc(u32::MAX)), // Single point at max (invalid)
         ];
-        
+
         for (start, end) in invalid_ranges {
             let range = Range::new(start, end);
-            assert!(range.is_none(), "Should fail to create invalid range: {:?} to {:?}", start, end);
+            assert!(
+                range.is_none(),
+                "Should fail to create invalid range: {start:?} to {end:?}"
+            );
         }
     }
 
     #[test]
     fn test_type_aliases_and_collections() {
         // Test the type aliases and specialized collections
-        
+
         // Test RangeVec
         let mut range_vec = RangeVec::new();
         let range1 = Range::new(Loc(0), Loc(5)).unwrap();
         let range2 = Range::new(Loc(10), Loc(15)).unwrap();
-        
+
         range_vec.push(range1);
         range_vec.push(range2);
-        
+
         assert_eq!(range_vec.len(), 2);
         assert_eq!(range_vec[0], range1);
         assert_eq!(range_vec[1], range2);
-        
+
         // Test MirVariables
-        let mut variables = MirVariables::default();
-        let var = MirVariable::User {
+        let variables = MirVariables::default();
+        let _var = MirVariable::User {
             index: 1,
             live: range1,
             dead: range2,
         };
-        
+
         // Note: MirVariables is a wrapper around IndexMap, need to access internal structure
         // This is a simplified test since the actual API may be different
         assert_eq!(variables.0.len(), 0);
-        
+
         // Test FoldIndexMap (HashMap wrapper)
         let mut map: FoldIndexMap<u32, String> = FoldIndexMap::default();
         map.insert(42, "test".to_string());
-        
+
         assert_eq!(map.len(), 1);
         assert_eq!(map.get(&42), Some(&"test".to_string()));
         assert!(map.contains_key(&42));

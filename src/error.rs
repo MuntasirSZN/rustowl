@@ -408,24 +408,24 @@ mod tests {
         // Test error chaining with various error types
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
         let rustowl_error: RustOwlError = io_error.into();
-        
+
         // Check that the original error information is preserved
         match rustowl_error {
             RustOwlError::Io(ref inner) => {
                 assert_eq!(inner.kind(), std::io::ErrorKind::NotFound);
                 assert!(inner.to_string().contains("file not found"));
-            },
+            }
             _ => panic!("Expected Io variant"),
         }
-        
+
         // Test JSON error chaining
         let json_error = serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err();
         let rustowl_json_error: RustOwlError = json_error.into();
-        
+
         match rustowl_json_error {
             RustOwlError::Json(ref inner) => {
                 assert!(inner.to_string().contains("expected"));
-            },
+            }
             _ => panic!("Expected Json variant"),
         }
     }
@@ -435,16 +435,16 @@ mod tests {
         // Test that RustOwlError implements Send + Sync
         fn assert_send<T: Send>() {}
         fn assert_sync<T: Sync>() {}
-        
+
         assert_send::<RustOwlError>();
         assert_sync::<RustOwlError>();
-        
+
         // Test that we can move errors across thread boundaries (conceptually)
         let error = RustOwlError::Cache("test".to_string());
         let boxed_error: Box<dyn std::error::Error + Send + Sync> = Box::new(error);
-        
+
         // Should be able to downcast back
-        if let Ok(_) = boxed_error.downcast::<RustOwlError>() {
+        if boxed_error.downcast::<RustOwlError>().is_ok() {
             // Successfully downcasted
         } else {
             panic!("Failed to downcast error");
@@ -456,23 +456,23 @@ mod tests {
         // Test all error variants to ensure they're handled
         let errors = vec![
             RustOwlError::Cache("cache".to_string()),
-            RustOwlError::Io(std::io::Error::new(std::io::ErrorKind::Other, "io")),
+            RustOwlError::Io(std::io::Error::other("io")),
             RustOwlError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err()),
             RustOwlError::Toolchain("toolchain".to_string()),
             RustOwlError::Lsp("lsp".to_string()),
             RustOwlError::Analysis("analysis".to_string()),
             RustOwlError::Config("config".to_string()),
         ];
-        
+
         for error in errors {
             // Each error should display properly
-            let display = format!("{}", error);
+            let display = format!("{error}");
             assert!(!display.is_empty());
-            
+
             // Each error should debug properly
-            let debug = format!("{:?}", error);
+            let debug = format!("{error:?}");
             assert!(!debug.is_empty());
-            
+
             // Each error should implement std::error::Error
             let std_error: &dyn std::error::Error = &error;
             let error_string = std_error.to_string();
@@ -491,47 +491,47 @@ mod tests {
             "message with \"quotes\" and 'apostrophes'",
             "message with numbers: 123, 456.789",
             "message with special chars: !@#$%^&*()",
-            "",  // Empty message
+            "",            // Empty message
             &long_message, // Very long message
         ];
-        
+
         for message in complex_messages {
-            let result: std::result::Result<(), std::io::Error> = Err(std::io::Error::new(
-                std::io::ErrorKind::Other, 
-                "test error"
-            ));
-            
-            let with_context = result.context(&message);
+            let result: std::result::Result<(), std::io::Error> =
+                Err(std::io::Error::other("test error"));
+
+            let with_context = result.context(message);
             assert!(with_context.is_err());
-            
+
             match with_context {
                 Err(RustOwlError::Analysis(ctx_msg)) => {
                     assert_eq!(ctx_msg, message);
-                },
+                }
                 _ => panic!("Expected Analysis error with context"),
             }
         }
     }
 
-    #[test] 
+    #[test]
     fn test_error_memory_usage() {
         // Test that errors don't use excessive memory
         let error = RustOwlError::Cache("test".to_string());
         let size = std::mem::size_of_val(&error);
-        
+
         // Error should be reasonably sized (less than a few KB)
-        assert!(size < 1024, "Error size {} bytes is too large", size);
-        
+        assert!(size < 1024, "Error size {size} bytes is too large");
+
         // Test with larger nested errors
-        let large_io_error = std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "error message that is quite long and contains lots of text to test memory usage patterns"
+        let large_io_error = std::io::Error::other(
+            "error message that is quite long and contains lots of text to test memory usage patterns",
         );
         let large_rustowl_error: RustOwlError = large_io_error.into();
         let large_size = std::mem::size_of_val(&large_rustowl_error);
-        
+
         // Should still be reasonable even with larger nested errors
-        assert!(large_size < 2048, "Large error size {} bytes is too large", large_size);
+        assert!(
+            large_size < 2048,
+            "Large error size {large_size} bytes is too large"
+        );
     }
 
     #[test]
@@ -540,25 +540,23 @@ mod tests {
         fn returns_result() -> Result<i32> {
             Ok(42)
         }
-        
+
         fn returns_error() -> Result<i32> {
             Err(RustOwlError::Cache("test error".to_string()))
         }
-        
+
         // Test successful result
         match returns_result() {
             Ok(value) => assert_eq!(value, 42),
             Err(_) => panic!("Expected success"),
         }
-        
+
         // Test error result
         match returns_error() {
             Ok(_) => panic!("Expected error"),
-            Err(error) => {
-                match error {
-                    RustOwlError::Cache(msg) => assert_eq!(msg, "test error"),
-                    _ => panic!("Expected Cache error"),
-                }
+            Err(error) => match error {
+                RustOwlError::Cache(msg) => assert_eq!(msg, "test error"),
+                _ => panic!("Expected Cache error"),
             },
         }
     }
