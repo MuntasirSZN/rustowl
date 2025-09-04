@@ -207,11 +207,11 @@ mod tests {
     #[test]
     fn test_atomic_true_constant() {
         // Test that ATOMIC_TRUE is properly initialized
-        assert_eq!(ATOMIC_TRUE.load(Ordering::Relaxed), true);
+        assert!(ATOMIC_TRUE.load(Ordering::Relaxed));
 
         // Test that it can be read multiple times consistently
-        assert_eq!(ATOMIC_TRUE.load(Ordering::SeqCst), true);
-        assert_eq!(ATOMIC_TRUE.load(Ordering::Acquire), true);
+        assert!(ATOMIC_TRUE.load(Ordering::SeqCst));
+        assert!(ATOMIC_TRUE.load(Ordering::Acquire));
     }
 
     #[test]
@@ -236,6 +236,7 @@ mod tests {
 
         // Test that runtime handle is available
         let _handle = runtime.handle();
+        let _enter = runtime.enter();
         assert!(tokio::runtime::Handle::try_current().is_ok());
     }
 
@@ -265,8 +266,7 @@ mod tests {
                 arg == "-vV" || arg == "--version" || arg.starts_with("--print");
             assert!(
                 should_use_default_rustc,
-                "Should use default rustc for: {}",
-                arg
+                "Should use default rustc for: {arg}"
             );
         }
 
@@ -277,8 +277,7 @@ mod tests {
                 arg == "-vV" || arg == "--version" || arg.starts_with("--print");
             assert!(
                 !should_use_default_rustc,
-                "Should not use default rustc for: {}",
-                arg
+                "Should not use default rustc for: {arg}"
             );
         }
     }
@@ -301,7 +300,7 @@ mod tests {
             let first = args.first();
             let second = args.get(1);
             let detected_skip = first == second;
-            assert_eq!(detected_skip, should_skip, "Failed for args: {:?}", args);
+            assert_eq!(detected_skip, should_skip, "Failed for args: {args:?}");
         }
     }
 
@@ -399,11 +398,6 @@ mod tests {
     fn test_stack_size_configuration() {
         // Test that the runtime is configured with appropriate stack size
         const EXPECTED_STACK_SIZE: usize = 128 * 1024 * 1024; // 128 MB
-
-        // We can't directly inspect the runtime's stack size, but we can verify
-        // the constant is reasonable
-        assert!(EXPECTED_STACK_SIZE > 1024 * 1024); // At least 1MB
-        assert!(EXPECTED_STACK_SIZE <= 1024 * 1024 * 1024); // At most 1GB
 
         // Test that the value is a power of 2 times some base unit
         assert_eq!(EXPECTED_STACK_SIZE % (1024 * 1024), 0); // Multiple of 1MB

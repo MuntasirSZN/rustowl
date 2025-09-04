@@ -384,7 +384,7 @@ mod tests {
 
             match cli.command {
                 Some(Commands::Completions(_)) => {}
-                _ => panic!("Expected Completions command for shell: {}", shell),
+                _ => panic!("Expected Completions command for shell: {shell}"),
             }
         }
     }
@@ -413,7 +413,7 @@ mod tests {
             command: Some(Commands::Clean),
         };
 
-        let debug_str = format!("{:?}", cli);
+        let debug_str = format!("{cli:?}");
         assert!(debug_str.contains("version: true"));
         assert!(debug_str.contains("quiet: 2"));
         assert!(debug_str.contains("stdio: true"));
@@ -428,7 +428,7 @@ mod tests {
             all_features: false,
         });
 
-        let debug_str = format!("{:?}", check);
+        let debug_str = format!("{check:?}");
         assert!(debug_str.contains("Check"));
         assert!(debug_str.contains("test"));
         assert!(debug_str.contains("all_targets: true"));

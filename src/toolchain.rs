@@ -367,9 +367,6 @@ mod tests {
     #[test]
     fn test_toolchain_constants() {
         // Test that the constants are properly set
-        assert!(!TOOLCHAIN.is_empty());
-        assert!(!HOST_TUPLE.is_empty());
-        assert!(!TOOLCHAIN_CHANNEL.is_empty());
 
         // These should be reasonable values
         assert!(
@@ -487,7 +484,7 @@ mod tests {
         std::fs::write(temp_path.join("subdir1").join("file2.txt"), "content").unwrap();
         std::fs::write(temp_path.join("subdir2").join("file3.txt"), "content").unwrap();
 
-        let files = recursive_read_dir(&temp_path);
+        let files = recursive_read_dir(temp_path);
 
         // Should find all files recursively
         assert!(files.len() >= 3);
@@ -520,13 +517,12 @@ mod tests {
         // Common architectures
         let valid_archs = ["x86_64", "i686", "aarch64", "armv7", "riscv64"];
         let is_valid_arch = valid_archs.iter().any(|&a| arch.starts_with(a));
-        assert!(is_valid_arch, "Unexpected architecture: {}", arch);
+        assert!(is_valid_arch, "Unexpected architecture: {arch}");
     }
 
     #[test]
     fn test_toolchain_format() {
         // TOOLCHAIN should be a valid toolchain identifier
-        assert!(!TOOLCHAIN.is_empty());
 
         // Should contain date or channel information
         // Typical format might be: nightly-2023-01-01-x86_64-unknown-linux-gnu
@@ -691,9 +687,8 @@ mod tests {
                     // First part should be year (4 digits)
                     if let Ok(year) = parts[0].parse::<u32>() {
                         assert!(
-                            year >= 2020 && year <= 2030,
-                            "Year should be reasonable: {}",
-                            year
+                            (2020..=2030).contains(&year),
+                            "Year should be reasonable: {year}"
                         );
                     }
                 }

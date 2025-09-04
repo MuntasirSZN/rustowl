@@ -363,7 +363,7 @@ mod miri_memory_safety_tests {
 
         // Test string creation with various patterns
         for i in 0..50 {
-            let s = format!("test_{}", i);
+            let s = format!("test_{i}");
             strings.push(s);
         }
 
@@ -429,12 +429,10 @@ mod miri_memory_safety_tests {
                     file.items.push(function);
                 }
 
-                crate_data.0.insert(format!("file_{}.rs", file_idx), file);
+                crate_data.0.insert(format!("file_{file_idx}.rs"), file);
             }
 
-            workspace
-                .0
-                .insert(format!("crate_{}", crate_idx), crate_data);
+            workspace.0.insert(format!("crate_{crate_idx}"), crate_data);
         }
 
         // Verify structure
@@ -589,7 +587,7 @@ mod miri_memory_safety_tests {
 
         // Test debug formatting
         for config in &configs {
-            let debug_str = format!("{:?}", config);
+            let debug_str = format!("{config:?}");
             assert!(debug_str.contains("CacheConfig"));
             assert!(debug_str.contains(&config.max_entries.to_string()));
         }
@@ -654,12 +652,12 @@ mod miri_memory_safety_tests {
 
             // Create some work that would be done in different "threads"
             let work = move || {
-                let _crate_name = format!("crate_{}", i);
+                let _crate_name = format!("crate_{i}");
                 let _workspace_ref = &*workspace_clone;
 
                 // Simulate reading from workspace
                 for j in 0..5 {
-                    let _key = format!("key_{}", j);
+                    let _key = format!("key_{j}");
                     // Would normally do workspace_ref.0.get(&key)
                 }
             };

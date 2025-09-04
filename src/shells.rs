@@ -280,8 +280,7 @@ mod tests {
             assert_eq!(
                 Shell::from_shell_path(path),
                 expected,
-                "Failed for path: {}",
-                path
+                "Failed for path: {path}"
             );
         }
     }
@@ -321,8 +320,7 @@ mod tests {
             let detected = Shell::from_shell_path(shell_path);
             assert!(
                 detected.is_some(),
-                "Should detect shell from path: {}",
-                shell_path
+                "Should detect shell from path: {shell_path}"
             );
         }
 
@@ -398,7 +396,7 @@ mod tests {
         let shell = Shell::Bash;
 
         // Test Clone
-        let cloned = shell.clone();
+        let cloned = shell;
         assert_eq!(shell, cloned);
 
         // Test Copy
@@ -435,8 +433,7 @@ mod tests {
             let parsed_shell = <Shell as FromStr>::from_str(&display_str).unwrap();
             assert_eq!(
                 shell, parsed_shell,
-                "Display and parse should roundtrip for {:?}",
-                shell
+                "Display and parse should roundtrip for {shell:?}"
             );
         }
     }

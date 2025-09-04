@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn test_error_debug_implementation() {
         let error = RustOwlError::Toolchain("test error".to_string());
-        let debug_str = format!("{:?}", error);
+        let debug_str = format!("{error:?}");
         assert!(debug_str.contains("Toolchain"));
         assert!(debug_str.contains("test error"));
     }
@@ -256,7 +256,7 @@ mod tests {
             let rustowl_error: RustOwlError = json_error.into();
             match rustowl_error {
                 RustOwlError::Json(_) => {}
-                _ => panic!("Expected Json variant for test case: {}", test_case),
+                _ => panic!("Expected Json variant for test case: {test_case}"),
             }
         }
     }
@@ -276,9 +276,7 @@ mod tests {
         assert!(test_function_error().is_err());
 
         // Test chaining
-        let result = test_function()
-            .and_then(|x| Ok(x * 2))
-            .and_then(|x| Ok(x + 1));
+        let result = test_function().map(|x| x * 2).map(|x| x + 1);
         assert_eq!(result.unwrap(), 85);
     }
 
@@ -296,7 +294,7 @@ mod tests {
 
         // Test successful operation with context chaining
         let option: Option<i32> = Some(42);
-        let result = option.context("should not be used").and_then(|x| Ok(x * 2));
+        let result = option.context("should not be used").map(|x| x * 2);
         assert_eq!(result.unwrap(), 84);
     }
 
@@ -334,7 +332,7 @@ mod tests {
         let result: std::result::Result<i32, std::io::Error> =
             Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"));
 
-        let with_context = result.with_context(|| format!("operation {} failed", counter));
+        let with_context = result.with_context(|| format!("operation {counter} failed"));
 
         assert!(with_context.is_err());
         match with_context {
@@ -375,7 +373,7 @@ mod tests {
 
         // Test that we can pass errors across threads (conceptually)
         let error = RustOwlError::Analysis("thread test".to_string());
-        let error_clone = format!("{}", error); // This would work across threads
+        let error_clone = format!("{error}"); // This would work across threads
         assert!(!error_clone.is_empty());
     }
 

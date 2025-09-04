@@ -22,7 +22,7 @@ fn bench_line_col(c: &mut Criterion) {
         } // occasional CR
         source.push('\n');
         if i % 1111 == 0 {
-            source.push_str("🦀");
+            source.push('🦀');
         } // some unicode
     }
 

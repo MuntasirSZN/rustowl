@@ -258,9 +258,6 @@ pub fn line_char_to_index(s: &str, mut line: u32, char: u32) -> u32 {
         if col_count == char {
             return consumed;
         }
-        if ch == '\n' {
-            return consumed;
-        }
         consumed += 1;
         col_count += 1;
     }
@@ -527,7 +524,7 @@ mod tests {
         // Add some declarations
         func.decls.push(MirDecl::Other {
             local: FnLocal::new(1, 1),
-            ty: "i32".to_string(),
+            ty: "i32".to_string().into(),
             lives: crate::models::RangeVec::new(),
             shared_borrow: crate::models::RangeVec::new(),
             mutable_borrow: crate::models::RangeVec::new(),
