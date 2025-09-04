@@ -275,28 +275,6 @@ pub async fn setup_cargo_command() -> tokio::process::Command {
     command
 }
 
-/// Configure environment variables on a Command so Rust invocations use the given sysroot.
-///
-/// Sets:
-/// - `RUSTC_BOOTSTRAP = "1"` to allow nightly-only features when invoking rustc.
-/// - `CARGO_ENCODED_RUSTFLAGS = "--sysroot={sysroot}"` so cargo/rustc use the provided sysroot.
-/// - On Linux: prepends `{sysroot}/lib` to `LD_LIBRARY_PATH`.
-/// - On macOS: prepends `{sysroot}/lib` to `DYLD_FALLBACK_LIBRARY_PATH`.
-/// - On Windows: prepends `{sysroot}/bin` to `Path`.
-///
-/// The provided `command` is mutated in place.
-///
-/// # Examples
-///
-/// ```
-/// use std::path::Path;
-/// use tokio::process::Command;
-///
-/// let sysroot = Path::new("/opt/rust/sysroot");
-/// let mut cmd = Command::new("cargo");
-/// crate::toolchain::set_rustc_env(&mut cmd, sysroot);
-/// // cmd is now configured to invoke cargo/rustc with the given sysroot.
-/// ```
 pub fn set_rustc_env(command: &mut tokio::process::Command, sysroot: &Path) {
     command
         .env("RUSTC_BOOTSTRAP", "1") // Support nightly projects
@@ -453,11 +431,6 @@ mod tests {
         assert!(parts.len() >= 3); // At least component-channel-host parts
     }
 
-    /// Verifies the fallback runtime directory is a valid, non-empty path.
-    ///
-    /// This test asserts that `FALLBACK_RUNTIME_DIR` yields a non-empty `PathBuf`.
-    /// In typical environments the path will be absolute; however, that may not
-    /// hold if the current executable or home directory cannot be determined.
     #[test]
     fn test_fallback_runtime_dir_logic() {
         // Test the path preference logic (without actually checking filesystem)
@@ -468,5 +441,142 @@ mod tests {
         
         // Should be an absolute path in most cases
         // (Except when current_exe or home_dir fails, but that's rare)
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        // (Except when current_exe or home_dir fails, but that's rare)
+    }
+}
+
+#[cfg(test)]
+mod more_tests {
+    // Additional tests focusing on error paths, pure functions, and filesystem behavior
+    // without requiring network access.
+    //
+    // Test framework: Rust's built-in test harness.
+    // Async execution: Explicit Tokio runtime (no #[tokio::test] macro), avoiding new dependencies.
+    use super::*;
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+
+    fn touch_file(path: &Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"test").unwrap();
+    }
+
+    #[test]
+    fn recursive_read_dir_nested_collects_only_files() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Create nested directory tree with files
+        let a = tmp.path().join("a");
+        touch_file(&a.join("b").join("c.txt"));
+        touch_file(&a.join("d").join("e.rs"));
+        touch_file(&tmp.path().join("f.bin"));
+
+        // Should return exactly the three files (order not guaranteed)
+        let got: HashSet<PathBuf> = recursive_read_dir(tmp.path())
+            .into_iter()
+            .map(|p| p.strip_prefix(tmp.path()).unwrap().to_path_buf())
+            .collect();
+
+        let expected: HashSet<PathBuf> = [
+            PathBuf::from("a/b/c.txt"),
+            PathBuf::from("a/d/e.rs"),
+            PathBuf::from("f.bin"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn sysroot_from_runtime_handles_dot_and_trailing_slash() {
+        let dot = PathBuf::from(".");
+        let sys1 = sysroot_from_runtime(&dot);
+        assert!(sys1.ends_with(TOOLCHAIN));
+        assert!(sys1.to_string_lossy().contains("sysroot"));
+
+        let trailing = PathBuf::from("./");
+        let sys2 = sysroot_from_runtime(&trailing);
+        assert_eq!(sys1, sys2);
+    }
+
+    #[test]
+    fn download_returns_err_for_invalid_url() {
+        // Invalid scheme should fail fast without any external IO.
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let res = download("http+invalid://not-a-valid-url").await;
+            assert!(res.is_err(), "expected invalid URL to yield Err(())");
+        });
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn download_tarball_and_extract_returns_err_for_invalid_url() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let res = download_tarball_and_extract("http+invalid://bad", tmp.path()).await;
+            assert!(res.is_err(), "expected invalid URL to yield Err(())");
+        });
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn download_zip_and_extract_returns_err_for_invalid_url() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let res = download_zip_and_extract("http+invalid://bad", tmp.path()).await;
+            assert!(res.is_err(), "expected invalid URL to yield Err(())");
+        });
+    }
+
+    #[test]
+    fn setup_rust_toolchain_fails_when_sysroot_path_is_a_file() {
+        // If "<dest>/sysroot" already exists as a file, create_dir_all should fail and we should return Err.
+        // This exercises the early error path in setup_rust_toolchain without any network calls.
+        let tmp = tempfile::tempdir().unwrap();
+        let sysroot_marker = tmp.path().join("sysroot");
+        std::fs::write(&sysroot_marker, b"not a directory").unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let res = rt.block_on(async { setup_rust_toolchain(tmp.path()).await });
+        assert!(res.is_err(), "expected create_dir_all to fail when parent is a file");
+    }
+
+    #[test]
+    fn set_rustc_env_does_not_panic_and_accepts_paths_with_spaces() {
+        // Verifies robustness of env configuration; introspection of envs on tokio::process::Command
+        // is limited, so we ensure no panic with unusual sysroot paths.
+        let mut cmd = tokio::process::Command::new("echo");
+        let sysroot_with_space = PathBuf::from("/tmp/some path/with spaces/sysroot");
+        set_rustc_env(&mut cmd, &sysroot_with_space);
     }
 }

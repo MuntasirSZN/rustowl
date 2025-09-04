@@ -50,23 +50,7 @@ pub fn get_cache_path() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// Construct a CacheConfig starting from defaults and overriding fields from environment variables.
-///
-/// The following environment variables are recognized (case-sensitive names):
-/// - `RUSTOWL_CACHE_MAX_ENTRIES`: parsed as `usize` to set `max_entries`.
-/// - `RUSTOWL_CACHE_MAX_MEMORY_MB`: parsed as `usize`; stored as bytes using saturating multiplication by 1024*1024.
-/// - `RUSTOWL_CACHE_EVICTION`: case-insensitive; `"lru"` enables LRU eviction, `"fifo"` disables it; other values leave the default.
-/// - `RUSTOWL_CACHE_VALIDATE_FILES`: case-insensitive; `"false"` or `"0"` disables file mtime validation, any other value enables it.
-///
-/// Returns the assembled `CacheConfig`.
-///
-/// # Examples
-///
-/// ```
-/// std::env::set_var("RUSTOWL_CACHE_MAX_ENTRIES", "5");
-/// let cfg = get_cache_config();
-/// assert_eq!(cfg.max_entries, 5);
-/// ```
+/// Get cache configuration from environment variables
 pub fn get_cache_config() -> CacheConfig {
     let mut config = CacheConfig::default();
 
@@ -107,26 +91,6 @@ mod tests {
     use super::*;
     use std::env;
 
-    /// Temporarily sets an environment variable for the duration of a closure, restoring the previous state afterwards.
-    ///
-    /// The function saves the current value of `key` (if any), sets `key` to `value`, runs `f()`, and then restores `key` to its original value:
-    /// - If the variable existed before, it is reset to its previous value.
-    /// - If the variable did not exist before, it is removed after `f` returns.
-    ///
-    /// This is intended for use in tests to run code under specific environment settings without leaking changes.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// // Ensure a value is visible inside the closure and restored afterwards.
-    /// use std::env;
-    ///
-    /// let prev = env::var("MY_TEST_VAR").ok();
-    /// with_env("MY_TEST_VAR", "temp", || {
-    ///     assert_eq!(env::var("MY_TEST_VAR").unwrap(), "temp");
-    /// });
-    /// assert_eq!(env::var("MY_TEST_VAR").ok(), prev);
-    /// ```
     fn with_env<F>(key: &str, value: &str, f: F) 
     where
         F: FnOnce(),
@@ -374,5 +338,222 @@ mod tests {
                 None => env::remove_var("RUSTOWL_CACHE_VALIDATE_FILES"),
             }
         }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        }
+    }
+}
+
+#[cfg(test)]
+mod more_tests {
+    use super::*;
+    use std::env;
+    use std::path::PathBuf;
+
+    // Note: Using Rust's built-in test harness (#[test]) with no external libraries.
+    // Helper to set and restore a single env var around a closure (matches existing pattern).
+    fn with_env<F>(key: &str, value: &str, f: F)
+    where
+        F: FnOnce(),
+    {
+        let old_value = env::var(key).ok();
+        unsafe { env::set_var(key, value); }
+        f();
+        match old_value {
+            Some(v) => unsafe { env::set_var(key, v); },
+            None => unsafe { env::remove_var(key); },
+        }
+    }
+
+    #[test]
+    fn test_is_cache_whitespace_only_value() {
+        with_env("RUSTOWL_CACHE", "    ", || {
+            assert!(is_cache(), "Whitespace-only should not disable cache");
+        });
+    }
+
+    #[test]
+    fn test_is_cache_mixed_case_false() {
+        with_env("RUSTOWL_CACHE", "FaLsE", || {
+            assert!(!is_cache(), "Mixed-case 'FaLsE' should disable cache");
+        });
+    }
+
+    #[test]
+    fn test_is_cache_zero_with_spaces_and_newline() {
+        with_env("RUSTOWL_CACHE", " 0 \n", || {
+            assert!(!is_cache(), "'0' with surrounding whitespace/newline should disable cache");
+        });
+    }
+
+    #[test]
+    fn test_is_cache_true_with_spaces() {
+        with_env("RUSTOWL_CACHE", "   true   ", || {
+            assert!(is_cache(), "'true' with surrounding whitespace should keep cache enabled");
+        });
+    }
+
+    #[test]
+    fn test_get_cache_path_relative_and_trim() {
+        with_env("RUSTOWL_CACHE_DIR", "  relative/path  ", || {
+            let path = get_cache_path().expect("path should be Some");
+            assert_eq!(path, PathBuf::from("relative/path"));
+        });
+    }
+
+    #[test]
+    fn test_get_cache_config_defaults_when_no_env() {
+        // Temporarily clear relevant env vars and assert defaults from get_cache_config.
+        let keys = [
+            "RUSTOWL_CACHE_MAX_ENTRIES",
+            "RUSTOWL_CACHE_MAX_MEMORY_MB",
+            "RUSTOWL_CACHE_EVICTION",
+            "RUSTOWL_CACHE_VALIDATE_FILES",
+        ];
+        let saved: Vec<_> = keys.iter().map(|k| env::var(k).ok()).collect();
+
+        unsafe {
+            for k in keys.iter() {
+                env::remove_var(k);
+            }
+        }
+
+        let config = get_cache_config();
+        assert_eq!(config.max_entries, 1000);
+        assert_eq!(config.max_memory_bytes, 100 * 1024 * 1024);
+        assert!(config.use_lru_eviction);
+        assert!(config.validate_file_mtime);
+        assert!(!config.enable_compression);
+
+        unsafe {
+            for (i, k) in keys.iter().enumerate() {
+                match &saved[i] {
+                    Some(v) => env::set_var(k, v),
+                    None => env::remove_var(k),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_cache_config_invalid_max_memory_keeps_default() {
+        with_env("RUSTOWL_CACHE_MAX_MEMORY_MB", "abc", || {
+            let config = get_cache_config();
+            assert_eq!(config.max_memory_bytes, 100 * 1024 * 1024);
+        });
+    }
+
+    #[test]
+    fn test_get_cache_config_numeric_with_whitespace_ignored_for_parse() {
+        // Numeric envs are not trimmed before parse; whitespace should fail parse and keep defaults.
+        with_env("RUSTOWL_CACHE_MAX_ENTRIES", " 300 ", || {
+            let config = get_cache_config();
+            assert_eq!(config.max_entries, 1000, "whitespace should keep default");
+        });
+
+        with_env("RUSTOWL_CACHE_MAX_MEMORY_MB", "  123  ", || {
+            let config = get_cache_config();
+            assert_eq!(config.max_memory_bytes, 100 * 1024 * 1024, "whitespace should keep default");
+        });
+    }
+
+    #[test]
+    fn test_get_cache_config_numeric_zero_values() {
+        with_env("RUSTOWL_CACHE_MAX_ENTRIES", "0", || {
+            let config = get_cache_config();
+            assert_eq!(config.max_entries, 0);
+        });
+
+        with_env("RUSTOWL_CACHE_MAX_MEMORY_MB", "0", || {
+            let config = get_cache_config();
+            assert_eq!(config.max_memory_bytes, 0);
+        });
+    }
+
+    #[test]
+    fn test_get_cache_config_oversized_values_saturate() {
+        with_env("RUSTOWL_CACHE_MAX_MEMORY_MB", &usize::MAX.to_string(), || {
+            let config = get_cache_config();
+            assert_eq!(config.max_memory_bytes, usize::MAX, "saturating_mul should cap at usize::MAX");
+        });
+
+        with_env("RUSTOWL_CACHE_MAX_ENTRIES", &usize::MAX.to_string(), || {
+            let config = get_cache_config();
+            assert_eq!(config.max_entries, usize::MAX, "entries should accept very large usize values");
+        });
+    }
+
+    #[test]
+    fn test_get_cache_config_eviction_policy_with_whitespace_and_mixed_case() {
+        with_env("RUSTOWL_CACHE_EVICTION", "  fIfO  ", || {
+            let config = get_cache_config();
+            assert!(!config.use_lru_eviction);
+        });
+
+        with_env("RUSTOWL_CACHE_EVICTION", "  lRu  ", || {
+            let config = get_cache_config();
+            assert!(config.use_lru_eviction);
+        });
+    }
+
+    #[test]
+    fn test_get_cache_config_validate_files_mixed_case_and_whitespace() {
+        with_env("RUSTOWL_CACHE_VALIDATE_FILES", "  TrUe  ", || {
+            let config = get_cache_config();
+            assert!(config.validate_file_mtime);
+        });
+
+        with_env("RUSTOWL_CACHE_VALIDATE_FILES", " false\n", || {
+            let config = get_cache_config();
+            assert!(!config.validate_file_mtime);
+        });
+    }
+
+    #[test]
+    fn test_get_cache_config_enable_compression_ignored_env() {
+        // Intentionally verify that compression remains at default (false) even if an env var exists.
+        // This codifies current behavior to preserve compatibility as noted in the default impl comment.
+        with_env("RUSTOWL_CACHE_ENABLE_COMPRESSION", "true", || {
+            let config = get_cache_config();
+            assert!(!config.enable_compression);
+        });
+
+        with_env("RUSTOWL_CACHE_ENABLE_COMPRESSION", "false", || {
+            let config = get_cache_config();
+            assert!(!config.enable_compression);
+        });
     }
 }
