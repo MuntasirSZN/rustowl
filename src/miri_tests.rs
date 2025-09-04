@@ -389,18 +389,15 @@ mod miri_memory_safety_tests {
         for s in strings {
             unique_strings.insert(s);
         }
-        
-        assert!(unique_strings.len() <= 50);
+        assert_eq!(unique_strings.len(), 50);
     }
 
     #[test]
     fn test_complex_nested_structures() {
         // Test deeply nested data structures for memory safety
-        let mut workspace = Workspace(FoldIndexMap::default());
-        
+        let mut workspace = Workspace(HashMap::default());
         for crate_idx in 0..10 {
-            let mut crate_data = Crate(FoldIndexMap::default());
-            
+            let mut crate_data = Crate(HashMap::default());
             for file_idx in 0..5 {
                 let mut file = File::new();
                 
@@ -454,8 +451,13 @@ mod miri_memory_safety_tests {
                 for function in &file_data.items {
                     assert_eq!(function.basic_blocks.len(), 4);
                     
-                    for basic_block in &function.basic_blocks {
+                    for (bb_idx, basic_block) in function.basic_blocks.iter().enumerate() {
                         assert_eq!(basic_block.statements.len(), 6);
+                        if bb_idx % 2 == 0 {
+                            assert!(basic_block.terminator.is_some());
+                        } else {
+                            assert!(basic_block.terminator.is_none());
+                        }
                     }
                 }
             }
@@ -479,22 +481,24 @@ mod miri_memory_safety_tests {
         // Test range merging and elimination
         let eliminated = crate::utils::eliminated_ranges(ranges.clone());
         assert!(eliminated.len() < ranges.len()); // Should merge some ranges
-        
+        // Ensure eliminated ranges are non-overlapping
+        assert!(
+            eliminated
+                .windows(2)
+                .all(|w| crate::utils::common_range(w[0], w[1]).is_none())
+        );
         // Test range exclusion
         let excludes = vec![
             Range::new(Loc(50), Loc(100)).unwrap(),
             Range::new(Loc(200), Loc(250)).unwrap(),
         ];
         
-        let excluded = crate::utils::exclude_ranges(ranges, excludes);
+        let excluded = crate::utils::exclude_ranges(ranges, excludes.clone());
         assert!(!excluded.is_empty());
         
         // Verify no excluded ranges overlap with exclude regions
         for range in &excluded {
-            for exclude in &[
-                Range::new(Loc(50), Loc(100)).unwrap(),
-                Range::new(Loc(200), Loc(250)).unwrap(),
-            ] {
+            for exclude in &excludes {
                 assert!(crate::utils::common_range(*range, *exclude).is_none());
             }
         }
@@ -611,8 +615,7 @@ mod miri_memory_safety_tests {
         
         // Test addition near overflow
         let result = max_loc + 1;
-        assert!(result.0 >= max_loc.0); // Should not wrap
-        
+        assert_eq!(result.0, max_loc.0); // Saturates at max
         let result = max_loc + (-1);
         assert_eq!(result.0, u32::MAX - 1); // Should subtract correctly
         
@@ -626,10 +629,9 @@ mod miri_memory_safety_tests {
         // Test with intermediate values
         let mid_loc = Loc(u32::MAX / 2);
         let result = mid_loc + (u32::MAX / 2) as i32;
-        assert!(result.0 >= mid_loc.0); // Should not overflow
-        
+        assert_eq!(result.0, u32::MAX - 1); // Exact expected value
         let result = mid_loc - (u32::MAX / 2) as i32;
-        assert!(result.0 <= mid_loc.0); // Should not underflow
+        assert_eq!(result.0, 0); // Exact expected value
     }
 
     #[test]
@@ -667,6 +669,6 @@ mod miri_memory_safety_tests {
         }
         
         // Test that Arc and reference counting works correctly
-        assert!(Arc::strong_count(&workspace) == 1); // Only our reference remains
+        assert_eq!(Arc::strong_count(&workspace), 1); // Only our reference remains
     }
 }

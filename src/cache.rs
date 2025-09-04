@@ -132,11 +132,17 @@ mod tests {
         F: FnOnce(),
     {
         let old_value = env::var(key).ok();
-        unsafe { env::set_var(key, value); }
-        f();
+        unsafe {
+            env::set_var(key, value);
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         match old_value {
-            Some(v) => unsafe { env::set_var(key, v); },
-            None => unsafe { env::remove_var(key); },
+            Some(v) => unsafe { env::set_var(key, v) },
+            None => unsafe { env::remove_var(key) }
+        }
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
         }
     }
 
