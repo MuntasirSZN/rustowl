@@ -169,4 +169,239 @@ mod tests {
             _ => panic!("Expected Analysis error with dynamic context"),
         }
     }
+
+    #[test]
+    fn test_all_error_variants_display() {
+        // Test display for all error variants
+        let errors = vec![
+            RustOwlError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "test")),
+            RustOwlError::CargoMetadata("metadata failed".to_string()),
+            RustOwlError::Toolchain("toolchain setup failed".to_string()),
+            RustOwlError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err()),
+            RustOwlError::Cache("cache write failed".to_string()),
+            RustOwlError::Lsp("lsp connection failed".to_string()),
+            RustOwlError::Analysis("analysis failed".to_string()),
+            RustOwlError::Config("config parse failed".to_string()),
+        ];
+
+        for error in errors {
+            let display_str = error.to_string();
+            assert!(!display_str.is_empty());
+            
+            // Each error type should have a descriptive prefix
+            match error {
+                RustOwlError::Io(_) => assert!(display_str.starts_with("I/O error:")),
+                RustOwlError::CargoMetadata(_) => assert!(display_str.starts_with("Cargo metadata error:")),
+                RustOwlError::Toolchain(_) => assert!(display_str.starts_with("Toolchain error:")),
+                RustOwlError::Json(_) => assert!(display_str.starts_with("JSON error:")),
+                RustOwlError::Cache(_) => assert!(display_str.starts_with("Cache error:")),
+                RustOwlError::Lsp(_) => assert!(display_str.starts_with("LSP error:")),
+                RustOwlError::Analysis(_) => assert!(display_str.starts_with("Analysis error:")),
+                RustOwlError::Config(_) => assert!(display_str.starts_with("Configuration error:")),
+            }
+        }
+    }
+
+    #[test]
+    fn test_error_debug_implementation() {
+        let error = RustOwlError::Toolchain("test error".to_string());
+        let debug_str = format!("{:?}", error);
+        assert!(debug_str.contains("Toolchain"));
+        assert!(debug_str.contains("test error"));
+    }
+
+    #[test]
+    fn test_std_error_trait() {
+        let error = RustOwlError::Analysis("test analysis error".to_string());
+        
+        // Test that it implements std::error::Error
+        let std_error: &dyn std::error::Error = &error;
+        assert_eq!(std_error.to_string(), "Analysis error: test analysis error");
+        
+        // Test source() method (should return None for our simple errors)
+        assert!(std_error.source().is_none());
+    }
+
+    #[test]
+    fn test_error_from_conversions_comprehensive() {
+        // Test various I/O error kinds
+        let io_errors = vec![
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied"),
+            std::io::Error::new(std::io::ErrorKind::AlreadyExists, "already exists"),
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid input"),
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"),
+        ];
+
+        for io_error in io_errors {
+            let rustowl_error: RustOwlError = io_error.into();
+            match rustowl_error {
+                RustOwlError::Io(_) => {}
+                _ => panic!("Expected Io variant"),
+            }
+        }
+
+        // Test various JSON errors
+        let json_test_cases = vec![
+            "{ invalid json",
+            "[1, 2, invalid",
+            "\"unterminated string",
+            "{ \"key\": }", // missing value
+        ];
+
+        for test_case in json_test_cases {
+            let json_error = serde_json::from_str::<serde_json::Value>(test_case).unwrap_err();
+            let rustowl_error: RustOwlError = json_error.into();
+            match rustowl_error {
+                RustOwlError::Json(_) => {}
+                _ => panic!("Expected Json variant for test case: {}", test_case),
+            }
+        }
+    }
+
+    #[test]
+    fn test_result_type_alias() {
+        // Test that our Result type alias works correctly
+        fn test_function() -> Result<i32> {
+            Ok(42)
+        }
+
+        fn test_function_error() -> Result<i32> {
+            Err(RustOwlError::Analysis("test error".to_string()))
+        }
+
+        assert_eq!(test_function().unwrap(), 42);
+        assert!(test_function_error().is_err());
+
+        // Test chaining
+        let result = test_function()
+            .and_then(|x| Ok(x * 2))
+            .and_then(|x| Ok(x + 1));
+        assert_eq!(result.unwrap(), 85);
+    }
+
+    #[test]
+    fn test_error_context_chaining() {
+        // Test chaining multiple context operations
+        let option: Option<i32> = None;
+        let result = option.context("first context");
+
+        assert!(result.is_err());
+        match result {
+            Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "first context"),
+            _ => panic!("Expected Analysis error"),
+        }
+        
+        // Test successful operation with context chaining
+        let option: Option<i32> = Some(42);
+        let result = option
+            .context("should not be used")
+            .and_then(|x| Ok(x * 2));
+        assert_eq!(result.unwrap(), 84);
+    }
+
+    #[test]
+    fn test_error_context_with_successful_operations() {
+        // Test that context doesn't interfere with successful operations
+        let result: std::result::Result<i32, std::io::Error> = Ok(42);
+        let with_context = result.context("this context should not be used");
+        assert_eq!(with_context.unwrap(), 42);
+
+        let option: Option<i32> = Some(100);
+        let with_context = option.context("this context should not be used");
+        assert_eq!(with_context.unwrap(), 100);
+    }
+
+    #[test]
+    fn test_error_context_with_complex_types() {
+        // Test context with more complex error types
+        use std::num::ParseIntError;
+        
+        let parse_result: std::result::Result<i32, ParseIntError> = "not_a_number".parse();
+        let with_context = parse_result.context("failed to parse number");
+        
+        assert!(with_context.is_err());
+        match with_context {
+            Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "failed to parse number"),
+            _ => panic!("Expected Analysis error"),
+        }
+    }
+
+    #[test]
+    fn test_error_context_dynamic_messages() {
+        // Test with_context with dynamic message generation
+        let counter = 5;
+        let result: std::result::Result<i32, std::io::Error> = 
+            Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"));
+        
+        let with_context = result.with_context(|| format!("operation {} failed", counter));
+        
+        assert!(with_context.is_err());
+        match with_context {
+            Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "operation 5 failed"),
+            _ => panic!("Expected Analysis error"),
+        }
+    }
+
+    #[test]
+    fn test_error_variant_construction() {
+        // Test direct construction of error variants
+        let errors = vec![
+            RustOwlError::CargoMetadata("custom metadata error".to_string()),
+            RustOwlError::Toolchain("custom toolchain error".to_string()),
+            RustOwlError::Cache("custom cache error".to_string()),
+            RustOwlError::Lsp("custom lsp error".to_string()),
+            RustOwlError::Analysis("custom analysis error".to_string()),
+            RustOwlError::Config("custom config error".to_string()),
+        ];
+
+        for error in errors {
+            // Verify each error can be created and has the expected message
+            let message = error.to_string();
+            assert!(!message.is_empty());
+            assert!(message.contains("custom"));
+            assert!(message.contains("error"));
+        }
+    }
+
+    #[test]
+    fn test_error_send_sync() {
+        // Test that our error type implements Send and Sync
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        
+        assert_send::<RustOwlError>();
+        assert_sync::<RustOwlError>();
+        
+        // Test that we can pass errors across threads (conceptually)
+        let error = RustOwlError::Analysis("thread test".to_string());
+        let error_clone = format!("{}", error); // This would work across threads
+        assert!(!error_clone.is_empty());
+    }
+
+    #[test]
+    fn test_error_context_trait_generic_bounds() {
+        // Test that ErrorContext works with various error types that implement std::error::Error
+        
+        // Test with a custom error type
+        #[derive(Debug)]
+        struct CustomError;
+        
+        impl std::fmt::Display for CustomError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "custom error")
+            }
+        }
+        
+        impl std::error::Error for CustomError {}
+        
+        let custom_result: std::result::Result<i32, CustomError> = Err(CustomError);
+        let with_context = custom_result.context("custom error context");
+        
+        assert!(with_context.is_err());
+        match with_context {
+            Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "custom error context"),
+            _ => panic!("Expected Analysis error"),
+        }
+    }
 }

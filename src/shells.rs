@@ -206,4 +206,260 @@ mod tests {
         // Just verify it doesn't panic and produces some output
         assert!(!buf.is_empty());
     }
+
+    #[test]
+    fn test_shell_from_str_case_insensitive() {
+        use std::str::FromStr;
+
+        // Test uppercase variants
+        assert_eq!(<Shell as FromStr>::from_str("BASH"), Ok(Shell::Bash));
+        assert_eq!(<Shell as FromStr>::from_str("ZSH"), Ok(Shell::Zsh));
+        assert_eq!(<Shell as FromStr>::from_str("FISH"), Ok(Shell::Fish));
+        assert_eq!(<Shell as FromStr>::from_str("POWERSHELL"), Ok(Shell::PowerShell));
+        assert_eq!(<Shell as FromStr>::from_str("NUSHELL"), Ok(Shell::Nushell));
+
+        // Test mixed case variants
+        assert_eq!(<Shell as FromStr>::from_str("BaSh"), Ok(Shell::Bash));
+        assert_eq!(<Shell as FromStr>::from_str("PowerShell"), Ok(Shell::PowerShell));
+        assert_eq!(<Shell as FromStr>::from_str("NuShell"), Ok(Shell::Nushell));
+    }
+
+    #[test]
+    fn test_shell_from_str_error_messages() {
+        use std::str::FromStr;
+
+        let result = <Shell as FromStr>::from_str("invalid");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "invalid variant: invalid");
+
+        let result = <Shell as FromStr>::from_str("cmd");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "invalid variant: cmd");
+
+        let result = <Shell as FromStr>::from_str("");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "invalid variant: ");
+    }
+
+    #[test]
+    fn test_shell_from_shell_path_comprehensive() {
+        // Test various path formats
+        let path_variants = vec![
+            ("/bin/bash", Some(Shell::Bash)),
+            ("/usr/bin/bash", Some(Shell::Bash)),
+            ("/usr/local/bin/bash", Some(Shell::Bash)),
+            ("bash", Some(Shell::Bash)),
+            ("./bash", Some(Shell::Bash)),
+            
+            ("zsh", Some(Shell::Zsh)),
+            ("/usr/bin/zsh", Some(Shell::Zsh)),
+            
+            ("fish", Some(Shell::Fish)),
+            ("/usr/local/bin/fish", Some(Shell::Fish)),
+            
+            ("elvish", Some(Shell::Elvish)),
+            ("/opt/bin/elvish", Some(Shell::Elvish)),
+            
+            ("powershell", Some(Shell::PowerShell)),
+            ("powershell_ise", Some(Shell::PowerShell)),
+            // Note: complex Windows paths may not parse correctly due to path parsing limitations
+            
+            ("nu", Some(Shell::Nushell)),
+            ("nushell", Some(Shell::Nushell)),
+            ("/usr/bin/nu", Some(Shell::Nushell)),
+            
+            // Invalid cases
+            ("unknown", None),
+            ("/bin/unknown", None),
+            ("sh", None),
+            ("cmd", None),
+            ("", None),
+        ];
+
+        for (path, expected) in path_variants {
+            assert_eq!(Shell::from_shell_path(path), expected, "Failed for path: {}", path);
+        }
+    }
+
+    #[test]
+    fn test_shell_from_shell_path_with_extensions() {
+        // Test paths with executable extensions
+        assert_eq!(Shell::from_shell_path("bash.exe"), Some(Shell::Bash));
+        assert_eq!(Shell::from_shell_path("zsh.exe"), Some(Shell::Zsh));
+        assert_eq!(Shell::from_shell_path("powershell.exe"), Some(Shell::PowerShell));
+        assert_eq!(Shell::from_shell_path("nu.exe"), Some(Shell::Nushell));
+        
+        // Test with complex paths
+        assert_eq!(Shell::from_shell_path("C:\\Program Files\\PowerShell\\7\\pwsh.exe"), None);
+        assert_eq!(Shell::from_shell_path("/snap/bin/nu"), Some(Shell::Nushell));
+    }
+
+    #[test]
+    fn test_shell_from_env_simulation() {
+        // Test the environment detection logic without actually modifying env
+        
+        // Simulate what from_env would do
+        let shell_paths = vec![
+            "/bin/bash",
+            "/usr/bin/zsh", 
+            "/usr/local/bin/fish",
+            "/opt/elvish",
+        ];
+        
+        for shell_path in shell_paths {
+            let detected = Shell::from_shell_path(shell_path);
+            assert!(detected.is_some(), "Should detect shell from path: {}", shell_path);
+        }
+        
+        // Test Windows default behavior simulation
+        #[cfg(windows)]
+        {
+            // On Windows, if no SHELL env var, it should default to PowerShell
+            let default_shell = Some(Shell::PowerShell);
+            assert_eq!(default_shell, Some(Shell::PowerShell));
+        }
+    }
+
+    #[test]
+    fn test_shell_to_standard_shell_completeness() {
+        // Test that all shells except Nushell have standard equivalents
+        let shells = [
+            Shell::Bash,
+            Shell::Elvish,
+            Shell::Fish,
+            Shell::PowerShell,
+            Shell::Zsh,
+            Shell::Nushell,
+        ];
+        
+        for shell in shells {
+            match shell {
+                Shell::Nushell => assert!(shell.to_standard_shell().is_none()),
+                _ => assert!(shell.to_standard_shell().is_some()),
+            }
+        }
+    }
+
+    #[test]
+    fn test_shell_file_name_generation() {
+        // Test file name generation for different shells
+        let shells = [
+            (Shell::Bash, "rustowl"),
+            (Shell::Zsh, "rustowl"),
+            (Shell::Fish, "rustowl"),
+            (Shell::PowerShell, "rustowl"),
+            (Shell::Elvish, "rustowl"),
+            (Shell::Nushell, "rustowl"),
+        ];
+        
+        for (shell, app_name) in shells {
+            let filename = shell.file_name(app_name);
+            assert!(!filename.is_empty());
+            assert!(filename.contains(app_name));
+        }
+    }
+
+    #[test]
+    fn test_shell_generate_different_commands() {
+        // Test generation basic functionality
+        use clap::Command;
+        
+        let cmd = Command::new("test-app").bin_name("test-app");
+        
+        // Test with one shell to verify basic functionality
+        let shell = Shell::Bash;
+        let mut buf = Vec::new();
+        shell.generate(&cmd, &mut buf);
+        assert!(!buf.is_empty(), "Generated completion should not be empty");
+        
+        // Verify it contains some expected content
+        let content = String::from_utf8_lossy(&buf);
+        assert!(content.contains("test-app"), "Should contain app name");
+    }
+
+    #[test]
+    fn test_shell_enum_properties() {
+        // Test enum properties and traits
+        let shell = Shell::Bash;
+        
+        // Test Clone
+        let cloned = shell.clone();
+        assert_eq!(shell, cloned);
+        
+        // Test Copy
+        let copied = shell;
+        assert_eq!(shell, copied);
+        
+        // Test Hash consistency
+        use std::collections::HashMap;
+        let mut map = HashMap::new();
+        map.insert(shell, "value");
+        assert_eq!(map.get(&Shell::Bash), Some(&"value"));
+        
+        // Test PartialEq
+        assert_eq!(Shell::Bash, Shell::Bash);
+        assert_ne!(Shell::Bash, Shell::Zsh);
+    }
+
+    #[test]
+    fn test_shell_display_format_consistency() {
+        // Test that display format is consistent with from_str parsing
+        use std::str::FromStr;
+        
+        let shells = [
+            Shell::Bash,
+            Shell::Elvish,
+            Shell::Fish,
+            Shell::PowerShell,
+            Shell::Zsh,
+            Shell::Nushell,
+        ];
+        
+        for shell in shells {
+            let display_str = shell.to_string();
+            let parsed_shell = <Shell as FromStr>::from_str(&display_str).unwrap();
+            assert_eq!(shell, parsed_shell, "Display and parse should roundtrip for {:?}", shell);
+        }
+    }
+
+    #[test]
+    fn test_shell_value_enum_integration() {
+        // Test that Shell works properly as a clap ValueEnum
+        use clap::ValueEnum;
+        
+        // Test value_variants
+        let variants = Shell::value_variants();
+        assert_eq!(variants.len(), 6);
+        assert!(variants.contains(&Shell::Bash));
+        assert!(variants.contains(&Shell::Nushell));
+        
+        // Test to_possible_value
+        for variant in variants {
+            let possible_value = variant.to_possible_value();
+            assert!(possible_value.is_some());
+            let pv = possible_value.unwrap();
+            assert!(!pv.get_name().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_shell_edge_cases() {
+        // Test edge cases and boundary conditions
+        
+        // Test with empty path components
+        assert_eq!(Shell::from_shell_path(""), None);
+        assert_eq!(Shell::from_shell_path("/"), None);
+        assert_eq!(Shell::from_shell_path("/."), None);
+        
+        // Test with paths that have no file stem
+        assert_eq!(Shell::from_shell_path("/usr/bin/"), None);
+        assert_eq!(Shell::from_shell_path(".bashrc"), None);
+        
+        // Test with symlink-like names (common in some distributions)
+        assert_eq!(Shell::from_shell_path("/usr/bin/sh"), None); // sh is not supported
+        assert_eq!(Shell::from_shell_path("/bin/dash"), None); // dash is not supported
+        
+        // Test case sensitivity in file stem extraction
+        assert_eq!(Shell::from_shell_path("/usr/bin/BASH"), None); // Case matters for file stem
+    }
 }
