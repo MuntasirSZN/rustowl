@@ -384,7 +384,7 @@ mod tests {
 
             match cli.command {
                 Some(Commands::Completions(_)) => {}
-                _ => panic!("Expected Completions command for shell: {shell}"),
+                _ => panic!("Expected Completions command for shell: {}", shell),
             }
         }
     }
@@ -413,7 +413,7 @@ mod tests {
             command: Some(Commands::Clean),
         };
 
-        let debug_str = format!("{cli:?}");
+        let debug_str = format!("{:?}", cli);
         assert!(debug_str.contains("version: true"));
         assert!(debug_str.contains("quiet: 2"));
         assert!(debug_str.contains("stdio: true"));
@@ -428,7 +428,7 @@ mod tests {
             all_features: false,
         });
 
-        let debug_str = format!("{check:?}");
+        let debug_str = format!("{:?}", check);
         assert!(debug_str.contains("Check"));
         assert!(debug_str.contains("test"));
         assert!(debug_str.contains("all_targets: true"));
@@ -454,6 +454,111 @@ mod tests {
                 assert_eq!(check.path, Some(PathBuf::from("./src")));
                 assert!(check.all_targets);
                 assert!(!check.all_features);
+            }
+            _ => panic!("Expected Check command"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod more_cli_tests {
+    // Testing library/framework: Rust's built-in test harness (cargo test) with clap's derive/CommandFactory for CLI parsing.
+    use super::*;
+    use clap::{CommandFactory, Parser};
+    use std::path::PathBuf;
+
+    #[test]
+    fn help_lists_commands_and_flags() {
+        let mut cmd = Cli::command();
+        let help = cmd.render_long_help().to_string();
+        let help_lower = help.to_lowercase();
+        assert!(help_lower.contains("check"), "help missing 'check': {}", help);
+        assert!(help_lower.contains("clean"), "help missing 'clean': {}", help);
+        assert!(help_lower.contains("toolchain"), "help missing 'toolchain': {}", help);
+        assert!(help_lower.contains("completions"), "help missing 'completions': {}", help);
+        assert!(help.contains("-V") || help.contains("--version"), "help missing version flag: {}", help);
+        assert!(help.contains("-q") || help.contains("--quiet"), "help missing quiet flag: {}", help);
+        assert!(help.contains("--stdio"), "help missing stdio flag: {}", help);
+    }
+
+    #[test]
+    fn toolchain_install_missing_path_value_errors() {
+        let args = vec!["rustowl", "toolchain", "install", "--path"];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn completions_requires_shell_value() {
+        let args = vec!["rustowl", "completions"];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn completions_rejects_trailing_args() {
+        let args = vec!["rustowl", "completions", "bash", "extra"];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn toolchain_rejects_unknown_subcommand() {
+        let args = vec!["rustowl", "toolchain", "update"];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn check_accepts_dash_prefixed_path_after_double_dash() {
+        let args = vec!["rustowl", "check", "--", "-not-a-flag"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        match cli.command {
+            Some(Commands::Check(check)) => {
+                assert_eq!(check.path, Some(PathBuf::from("-not-a-flag")));
+                assert!(!check.all_targets);
+                assert!(!check.all_features);
+            }
+            _ => panic!("Expected Check command"),
+        }
+    }
+
+    #[test]
+    fn quiet_mixed_forms_accumulate_correctly() {
+        let args = vec!["rustowl", "-q", "--quiet", "-q"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert_eq!(cli.quiet, 3);
+    }
+
+    #[test]
+    fn version_flag_can_be_combined_with_subcommands() {
+        let args = vec!["rustowl", "-V", "clean"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert!(cli.version);
+        match cli.command {
+            Some(Commands::Clean) => {}
+            _ => panic!("Expected Clean command"),
+        }
+    }
+
+    #[test]
+    fn clean_rejects_unrecognized_options() {
+        let args = vec!["rustowl", "clean", "--verbose"];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn toolchain_uninstall_rejects_extraneous_args() {
+        let args = vec!["rustowl", "toolchain", "uninstall", "--extra"];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn stdio_with_check_and_flags_parses() {
+        let args = vec!["rustowl", "--stdio", "check", "path/to", "--all-features"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert!(cli.stdio);
+        match cli.command {
+            Some(Commands::Check(check)) => {
+                assert_eq!(check.path, Some(PathBuf::from("path/to")));
+                assert!(!check.all_targets);
+                assert!(check.all_features);
             }
             _ => panic!("Expected Check command"),
         }

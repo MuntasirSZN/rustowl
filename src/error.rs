@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn test_error_debug_implementation() {
         let error = RustOwlError::Toolchain("test error".to_string());
-        let debug_str = format!("{error:?}");
+        let debug_str = format!("{:?}", error);
         assert!(debug_str.contains("Toolchain"));
         assert!(debug_str.contains("test error"));
     }
@@ -256,7 +256,7 @@ mod tests {
             let rustowl_error: RustOwlError = json_error.into();
             match rustowl_error {
                 RustOwlError::Json(_) => {}
-                _ => panic!("Expected Json variant for test case: {test_case}"),
+                _ => panic!("Expected Json variant for test case: {}", test_case),
             }
         }
     }
@@ -276,7 +276,9 @@ mod tests {
         assert!(test_function_error().is_err());
 
         // Test chaining
-        let result = test_function().map(|x| x * 2).map(|x| x + 1);
+        let result = test_function()
+            .and_then(|x| Ok(x * 2))
+            .and_then(|x| Ok(x + 1));
         assert_eq!(result.unwrap(), 85);
     }
 
@@ -294,7 +296,7 @@ mod tests {
 
         // Test successful operation with context chaining
         let option: Option<i32> = Some(42);
-        let result = option.context("should not be used").map(|x| x * 2);
+        let result = option.context("should not be used").and_then(|x| Ok(x * 2));
         assert_eq!(result.unwrap(), 84);
     }
 
@@ -332,7 +334,7 @@ mod tests {
         let result: std::result::Result<i32, std::io::Error> =
             Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"));
 
-        let with_context = result.with_context(|| format!("operation {counter} failed"));
+        let with_context = result.with_context(|| format!("operation {} failed", counter));
 
         assert!(with_context.is_err());
         match with_context {
@@ -373,7 +375,7 @@ mod tests {
 
         // Test that we can pass errors across threads (conceptually)
         let error = RustOwlError::Analysis("thread test".to_string());
-        let error_clone = format!("{error}"); // This would work across threads
+        let error_clone = format!("{}", error); // This would work across threads
         assert!(!error_clone.is_empty());
     }
 
@@ -401,5 +403,131 @@ mod tests {
             Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "custom error context"),
             _ => panic!("Expected Analysis error"),
         }
+    }
+}
+
+#[cfg(test)]
+mod more_tests {
+    // Additional tests focused on ErrorContext behavior and '?' conversions.
+    // Note: Uses Rust's built-in #[test] framework.
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn with_context_closure_not_called_on_ok_result() {
+        let counter = AtomicUsize::new(0);
+        let ok: std::result::Result<i32, std::io::Error> = Ok(10);
+
+        let res = ok.with_context(|| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            "should not be used".to_string()
+        });
+
+        assert_eq!(res.unwrap(), 10);
+        assert_eq!(counter.load(Ordering::SeqCst), 0, "closure must not be evaluated for Ok");
+    }
+
+    #[test]
+    fn option_with_context_closure_not_called_on_some() {
+        let counter = AtomicUsize::new(0);
+        let some: Option<&str> = Some("ok");
+
+        let res = some.with_context(|| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            "none".to_string()
+        });
+
+        assert_eq!(res.unwrap(), "ok");
+        assert_eq!(counter.load(Ordering::SeqCst), 0, "closure must not be evaluated for Some");
+    }
+
+    #[test]
+    fn question_mark_converts_serde_json_error() {
+        fn parse_invalid() -> Result<()> {
+            let _v: serde_json::Value = serde_json::from_str("{ invalid")?; // should produce serde_json::Error -> RustOwlError::Json via From
+            Ok(())
+        }
+
+        match parse_invalid() {
+            Err(RustOwlError::Json(_)) => {}
+            other => panic!("Expected Json error via '?', got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn question_mark_converts_io_error() {
+        fn io_fail() -> Result<()> {
+            // Using a constructed std::io::Result and '?' to trigger From<std::io::Error> for RustOwlError
+            let r: std::io::Result<()> =
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "io fail"));
+            r?; // converts into RustOwlError::Io
+            Ok(())
+        }
+
+        match io_fail() {
+            Err(RustOwlError::Io(_)) => {}
+            other => panic!("Expected Io error via '?', got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn display_includes_underlying_messages() {
+        // Io variant should include inner message
+        let io_err = RustOwlError::Io(std::io::Error::new(std::io::ErrorKind::Other, "boom"));
+        let io_msg = io_err.to_string();
+        assert!(io_msg.starts_with("I/O error:"), "prefix missing: {}", io_msg);
+        assert!(io_msg.contains("boom"), "inner message missing: {}", io_msg);
+
+        // Json variant should have a non-empty payload after the prefix
+        let json_err = RustOwlError::Json(
+            serde_json::from_str::<serde_json::Value>("{ invalid").unwrap_err(),
+        );
+        let json_msg = json_err.to_string();
+        assert!(json_msg.starts_with("JSON error:"), "prefix missing: {}", json_msg);
+        assert!(
+            json_msg.trim().len() > "JSON error:".len(),
+            "expected serde_json message content after prefix"
+        );
+    }
+
+    #[test]
+    fn rustowl_error_is_static_send_sync() {
+        fn assert_static<T: 'static>() {}
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+
+        assert_static::<RustOwlError>();
+        assert_send::<RustOwlError>();
+        assert_sync::<RustOwlError>();
+    }
+
+    #[test]
+    fn option_with_context_dynamic_message() {
+        let user_id = 42;
+        let none: Option<i32> = None;
+
+        let err = none
+            .with_context(|| format!("user {user_id} missing value"))
+            .unwrap_err();
+
+        match err {
+            RustOwlError::Analysis(msg) => assert_eq!(msg, "user 42 missing value"),
+            other => panic!("Expected Analysis error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn with_context_not_evaluated_on_success_even_with_expensive_message() {
+        let counter = AtomicUsize::new(0);
+        let ok: std::result::Result<&'static str, std::io::Error> = Ok("ok");
+
+        let out = ok.with_context(|| {
+            // If evaluated, this would be relatively expensive and increment the counter.
+            counter.fetch_add(1, Ordering::SeqCst);
+            "expensive message".repeat(1000)
+        });
+
+        assert_eq!(out.unwrap(), "ok");
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
     }
 }

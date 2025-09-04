@@ -189,3 +189,129 @@ mod tests {
         assert_eq!(visitor.count, 2); // 1 function + 1 statement
     }
 }
+
+// Additional unit tests appended to focus on logging initialization and edge cases in public APIs.
+#[cfg(test)]
+mod logging_and_api_tests {
+    // Testing framework note:
+    // Using Rust's built-in test framework (cargo test). No external test libs introduced.
+    use super::*;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::Once;
+    use tracing::{debug, error, info, trace, warn};
+    use tracing_subscriber::filter::LevelFilter;
+
+    // Ensure we only initialize the global subscriber once in this module to avoid cross-test flakiness.
+    static INIT: Once = Once::new();
+
+    fn init_logger_for_tests() {
+        INIT.call_once(|| {
+            // Avoid environment override during baseline init
+            std::env::remove_var("RUST_LOG");
+            initialize_logging(LevelFilter::TRACE);
+        });
+    }
+
+    #[test]
+    fn initialize_logging_is_idempotent_and_does_not_panic() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            initialize_logging(LevelFilter::INFO);
+            initialize_logging(LevelFilter::DEBUG);
+            initialize_logging(LevelFilter::TRACE);
+        }));
+        assert!(result.is_ok(), "initialize_logging should never panic even when called multiple times");
+    }
+
+    #[test]
+    fn initialize_logging_gracefully_handles_invalid_rust_log_env() {
+        // Even with an invalid RUST_LOG, the function should fall back to provided level and not panic.
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            std::env::set_var("RUST_LOG", "!!!!invalid-filter!!!!");
+            initialize_logging(LevelFilter::WARN);
+            // Clean up to avoid leaking state into other tests
+            std::env::remove_var("RUST_LOG");
+        }));
+        assert!(result.is_ok(), "initialize_logging should not panic with invalid RUST_LOG");
+    }
+
+    #[test]
+    fn logging_macros_across_levels_do_not_panic_after_init() {
+        init_logger_for_tests();
+        let res = catch_unwind(AssertUnwindSafe(|| {
+            trace!("trace message");
+            debug!("debug message");
+            info!("info message");
+            warn!("warn message");
+            error!("error message");
+        }));
+        assert!(res.is_ok(), "emitting logs at various levels should not panic");
+    }
+
+    // Additional API coverage focusing on pure/closed-form functions and edge cases.
+
+    #[test]
+    fn common_range_returns_none_for_disjoint_inputs() {
+        use crate::models::{Loc, Range};
+        use crate::utils::common_range;
+
+        let r1 = Range::new(Loc(0), Loc(5)).expect("valid range");
+        let r2 = Range::new(Loc(6), Loc(10)).expect("valid range");
+        assert!(common_range(r1, r2).is_none(), "disjoint ranges should have no common intersection");
+    }
+
+    #[test]
+    fn range_new_rejects_inverted_bounds() {
+        use crate::models::{Loc, Range};
+        // When start > end, construction should fail.
+        let res = Range::new(Loc(10), Loc(0));
+        assert!(res.is_err(), "Range::new should return Err for start > end");
+    }
+
+    #[test]
+    fn mir_visitor_counts_multiple_statements() {
+        use crate::models::*;
+        use crate::utils::mir_visit;
+
+        let mut function = Function::new(7);
+
+        // Basic block 1 with one statement
+        let mut bb1 = MirBasicBlock::new();
+        bb1.statements.push(MirStatement::Other {
+            range: Range::new(Loc(0), Loc(2)).expect("valid range"),
+        });
+        function.basic_blocks.push(bb1);
+
+        // Basic block 2 with one statement
+        let mut bb2 = MirBasicBlock::new();
+        bb2.statements.push(MirStatement::Other {
+            range: Range::new(Loc(3), Loc(4)).expect("valid range"),
+        });
+        function.basic_blocks.push(bb2);
+
+        struct CountingVisitor {
+            count: usize,
+        }
+
+        impl MirVisitor for CountingVisitor {
+            fn visit_func(&mut self, _func: &Function) {
+                self.count += 1;
+            }
+            fn visit_stmt(&mut self, _stmt: &MirStatement) {
+                self.count += 1;
+            }
+        }
+
+        let mut visitor = CountingVisitor { count: 0 };
+        mir_visit(&function, &mut visitor);
+
+        // Expect 1 function + 2 statements = 3 visits
+        assert_eq!(visitor.count, 3, "visitor should count one function and two statements");
+    }
+
+    #[test]
+    fn backend_type_is_publicly_exposed_and_named_sensibly() {
+        // Validate the public re-export remains intact
+        let ty = std::any::type_name::<Backend>();
+        assert!(ty.contains("Backend"), "public type name should contain 'Backend'");
+    }
+}

@@ -855,3 +855,37 @@ mod tests {
         assert_eq!(map.len(), 2);
     }
 }
+
+#[cfg(test)]
+mod more_tests_for_models {
+    use super::*;
+    use smallvec::SmallVec;
+    use indexmap::IndexMap;
+
+    fn r(a: u32, b: u32) -> Range { Range::new(Loc(a), Loc(b)).unwrap() }
+
+    #[test]
+    fn loc_unicode_and_crlf() {
+        let s = "A\r\né🙂";
+        // A(0) \r(1) \n(2) é(3..5) 🙂(5..9)
+        assert_eq!(Loc::new(s, 0, 0), Loc(0));
+        assert_eq!(Loc::new(s, 2, 0), Loc(1)); // after CRLF, only 'A' counted
+        assert_eq!(Loc::new(s, 3, 0), Loc(1)); // at start of 'é'
+        assert_eq!(Loc::new(s, 5, 0), Loc(2)); // after 'é'
+        assert_eq!(Loc::new(s, 9, 0), Loc(3)); // after '🙂'
+    }
+
+    #[test]
+    fn range_size_and_new() {
+        assert!(Range::new(Loc(5), Loc(5)).is_none());
+        assert_eq!(r(0, 10).size(), 10);
+    }
+
+    #[test]
+    fn mir_variables_dedup_by_index() {
+        let mut mv = MirVariables::with_capacity(1);
+        mv.push(MirVariable::Other { index: 10, live: r(0,1), dead: r(1,2) });
+        mv.push(MirVariable::User { index: 10, live: r(2,3), dead: r(3,4) }); // ignored
+        assert_eq!(mv.clone().to_vec().len(), 1);
+    }
+}

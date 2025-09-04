@@ -367,6 +367,9 @@ mod tests {
     #[test]
     fn test_toolchain_constants() {
         // Test that the constants are properly set
+        assert!(!TOOLCHAIN.is_empty());
+        assert!(!HOST_TUPLE.is_empty());
+        assert!(!TOOLCHAIN_CHANNEL.is_empty());
 
         // These should be reasonable values
         assert!(
@@ -484,7 +487,7 @@ mod tests {
         std::fs::write(temp_path.join("subdir1").join("file2.txt"), "content").unwrap();
         std::fs::write(temp_path.join("subdir2").join("file3.txt"), "content").unwrap();
 
-        let files = recursive_read_dir(temp_path);
+        let files = recursive_read_dir(&temp_path);
 
         // Should find all files recursively
         assert!(files.len() >= 3);
@@ -517,12 +520,13 @@ mod tests {
         // Common architectures
         let valid_archs = ["x86_64", "i686", "aarch64", "armv7", "riscv64"];
         let is_valid_arch = valid_archs.iter().any(|&a| arch.starts_with(a));
-        assert!(is_valid_arch, "Unexpected architecture: {arch}");
+        assert!(is_valid_arch, "Unexpected architecture: {}", arch);
     }
 
     #[test]
     fn test_toolchain_format() {
         // TOOLCHAIN should be a valid toolchain identifier
+        assert!(!TOOLCHAIN.is_empty());
 
         // Should contain date or channel information
         // Typical format might be: nightly-2023-01-01-x86_64-unknown-linux-gnu
@@ -687,8 +691,9 @@ mod tests {
                     // First part should be year (4 digits)
                     if let Ok(year) = parts[0].parse::<u32>() {
                         assert!(
-                            (2020..=2030).contains(&year),
-                            "Year should be reasonable: {year}"
+                            year >= 2020 && year <= 2030,
+                            "Year should be reasonable: {}",
+                            year
                         );
                     }
                 }
@@ -769,5 +774,190 @@ mod tests {
         // Test with non-matching prefix
         let other_base = PathBuf::from("/different/path");
         assert!(full_path.strip_prefix(&other_base).is_err());
+    }
+}
+
+#[cfg(test)]
+mod more_tests {
+    //! Additional focused tests for toolchain utilities.
+    //! Test framework: Rust built-in test harness; uses Tokio runtime for spawning child processes.
+
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+    use tokio::runtime::Runtime;
+
+    #[test]
+    fn test_recursive_read_dir_includes_hidden_files() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        // structure:
+        // root/.hidden
+        // root/sub/file.txt
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join(".hidden"), "x").unwrap();
+        fs::write(root.join("sub").join("file.txt"), "y").unwrap();
+
+        let files = recursive_read_dir(root);
+        let names: Vec<String> = files
+            .iter()
+            .filter_map(|p| p.file_name().and_then(|s| s.to_str()))
+            .map(|s| s.to_string())
+            .collect();
+
+        assert!(names.contains(&".hidden".to_string()), "hidden file should be discovered");
+        assert!(names.contains(&"file.txt".to_string()), "regular file should be discovered");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_recursive_read_dir_includes_symlink_to_file() {
+        use std::os::unix::fs::symlink;
+
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        fs::write(root.join("target.txt"), "content").unwrap();
+        symlink(root.join("target.txt"), root.join("link.txt")).unwrap();
+
+        let files = recursive_read_dir(root);
+        let names: Vec<String> = files
+            .iter()
+            .filter_map(|p| p.file_name().and_then(|s| s.to_str()))
+            .map(|s| s.to_string())
+            .collect();
+
+        assert!(names.contains(&"target.txt".to_string()));
+        assert!(names.contains(&"link.txt".to_string()), "symlink should be listed as a file");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_set_rustc_env_applies_linux_envs() {
+        use std::env;
+
+        let sysroot = PathBuf::from("/tmp/rustowl-test-sysroot");
+        let prev = env::var("LD_LIBRARY_PATH").ok();
+        env::set_var("LD_LIBRARY_PATH", "/usr/lib:/lib");
+
+        let mut cmd = tokio::process::Command::new("env");
+        set_rustc_env(&mut cmd, &sysroot);
+
+        let rt = Runtime::new().unwrap();
+        let out = rt.block_on(cmd.output()).unwrap();
+        let s = String::from_utf8_lossy(&out.stdout);
+
+        assert!(s.contains("RUSTC_BOOTSTRAP=1"));
+        let flag = format!("CARGO_ENCODED_RUSTFLAGS=--sysroot={}", sysroot.display());
+        assert!(s.contains(&flag));
+
+        let lib_prefix = format!("LD_LIBRARY_PATH={}", sysroot.join("lib").display());
+        assert!(s.contains(&lib_prefix), "sysroot/lib should be prepended to LD_LIBRARY_PATH");
+
+        // Restore
+        if let Some(prev) = prev {
+            env::set_var("LD_LIBRARY_PATH", prev);
+        } else {
+            env::remove_var("LD_LIBRARY_PATH");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_set_rustc_env_applies_macos_envs() {
+        use std::env;
+
+        let sysroot = PathBuf::from("/tmp/rustowl-test-sysroot");
+        let prev = env::var("DYLD_FALLBACK_LIBRARY_PATH").ok();
+        env::set_var("DYLD_FALLBACK_LIBRARY_PATH", "/usr/lib:/lib");
+
+        let mut cmd = tokio::process::Command::new("env");
+        set_rustc_env(&mut cmd, &sysroot);
+
+        let rt = Runtime::new().unwrap();
+        let out = rt.block_on(cmd.output()).unwrap();
+        let s = String::from_utf8_lossy(&out.stdout);
+
+        assert!(s.contains("RUSTC_BOOTSTRAP=1"));
+        let flag = format!("CARGO_ENCODED_RUSTFLAGS=--sysroot={}", sysroot.display());
+        assert!(s.contains(&flag));
+
+        let lib_prefix = format!("DYLD_FALLBACK_LIBRARY_PATH={}", sysroot.join("lib").display());
+        assert!(
+            s.contains(&lib_prefix),
+            "sysroot/lib should be prepended to DYLD_FALLBACK_LIBRARY_PATH"
+        );
+
+        // Restore
+        if let Some(prev) = prev {
+            env::set_var("DYLD_FALLBACK_LIBRARY_PATH", prev);
+        } else {
+            env::remove_var("DYLD_FALLBACK_LIBRARY_PATH");
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_set_rustc_env_applies_windows_envs() {
+        let sysroot = PathBuf::from("C:\\rustowl-test-sysroot");
+
+        // Use `cmd /C set` to print environment
+        let mut cmd = tokio::process::Command::new("cmd.exe");
+        cmd.arg("/C").arg("set");
+
+        set_rustc_env(&mut cmd, &sysroot);
+
+        let rt = Runtime::new().unwrap();
+        let out = rt.block_on(cmd.output()).unwrap();
+        let s = String::from_utf8_lossy(&out.stdout);
+
+        assert!(s.contains("RUSTC_BOOTSTRAP=1"));
+        let flag = format!("CARGO_ENCODED_RUSTFLAGS=--sysroot={}", sysroot.display());
+        assert!(s.contains(&flag));
+
+        // Ensure sysroot/bin is present in Path
+        let bin_segment = sysroot.join("bin").to_string_lossy().to_string();
+        assert!(
+            s.contains(&bin_segment),
+            "Path should include sysroot\\bin (got: ...)"
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_set_rustc_env_handles_empty_path_vars() {
+        use std::env;
+
+        let sysroot = PathBuf::from("/tmp/rustowl-test-sysroot");
+
+        #[cfg(target_os = "linux")]
+        let var = "LD_LIBRARY_PATH";
+        #[cfg(target_os = "macos")]
+        let var = "DYLD_FALLBACK_LIBRARY_PATH";
+
+        let prev = env::var(var).ok();
+        env::set_var(var, "");
+
+        let mut cmd = tokio::process::Command::new("env");
+        set_rustc_env(&mut cmd, &sysroot);
+
+        let rt = Runtime::new().unwrap();
+        let out = rt.block_on(cmd.output()).unwrap();
+        let s = String::from_utf8_lossy(&out.stdout);
+
+        let expected_prefix = format!("{var}={}", sysroot.join("lib").display());
+        assert!(
+            s.contains(&expected_prefix),
+            "When {var} is empty, it should be set to sysroot/lib"
+        );
+
+        // Restore
+        if let Some(prev) = prev {
+            env::set_var(var, prev);
+        } else {
+            env::remove_var(var);
+        }
     }
 }

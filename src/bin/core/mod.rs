@@ -207,11 +207,11 @@ mod tests {
     #[test]
     fn test_atomic_true_constant() {
         // Test that ATOMIC_TRUE is properly initialized
-        assert!(ATOMIC_TRUE.load(Ordering::Relaxed));
+        assert_eq!(ATOMIC_TRUE.load(Ordering::Relaxed), true);
 
         // Test that it can be read multiple times consistently
-        assert!(ATOMIC_TRUE.load(Ordering::SeqCst));
-        assert!(ATOMIC_TRUE.load(Ordering::Acquire));
+        assert_eq!(ATOMIC_TRUE.load(Ordering::SeqCst), true);
+        assert_eq!(ATOMIC_TRUE.load(Ordering::Acquire), true);
     }
 
     #[test]
@@ -236,7 +236,6 @@ mod tests {
 
         // Test that runtime handle is available
         let _handle = runtime.handle();
-        let _enter = runtime.enter();
         assert!(tokio::runtime::Handle::try_current().is_ok());
     }
 
@@ -266,7 +265,8 @@ mod tests {
                 arg == "-vV" || arg == "--version" || arg.starts_with("--print");
             assert!(
                 should_use_default_rustc,
-                "Should use default rustc for: {arg}"
+                "Should use default rustc for: {}",
+                arg
             );
         }
 
@@ -277,7 +277,8 @@ mod tests {
                 arg == "-vV" || arg == "--version" || arg.starts_with("--print");
             assert!(
                 !should_use_default_rustc,
-                "Should not use default rustc for: {arg}"
+                "Should not use default rustc for: {}",
+                arg
             );
         }
     }
@@ -300,7 +301,7 @@ mod tests {
             let first = args.first();
             let second = args.get(1);
             let detected_skip = first == second;
-            assert_eq!(detected_skip, should_skip, "Failed for args: {args:?}");
+            assert_eq!(detected_skip, should_skip, "Failed for args: {:?}", args);
         }
     }
 
@@ -399,6 +400,11 @@ mod tests {
         // Test that the runtime is configured with appropriate stack size
         const EXPECTED_STACK_SIZE: usize = 128 * 1024 * 1024; // 128 MB
 
+        // We can't directly inspect the runtime's stack size, but we can verify
+        // the constant is reasonable
+        assert!(EXPECTED_STACK_SIZE > 1024 * 1024); // At least 1MB
+        assert!(EXPECTED_STACK_SIZE <= 1024 * 1024 * 1024); // At most 1GB
+
         // Test that the value is a power of 2 times some base unit
         assert_eq!(EXPECTED_STACK_SIZE % (1024 * 1024), 0); // Multiple of 1MB
     }
@@ -443,5 +449,114 @@ mod tests {
         let error_result = || -> Result<(), ()> { Err(()) };
         let result = error_result();
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests_additional {
+    // Note: Tests use Rust's built-in test framework (cargo test with #[test])
+    // and leverage the existing Tokio runtime (RUNTIME) defined in this module.
+    use super::*;
+    use tokio::task::JoinSet;
+    use serde_json::Value;
+
+    #[test]
+    fn test_tasks_try_join_next_empty() {
+        // Ensure TASKS is empty and try_join_next is non-blocking when no tasks are ready.
+        let mut guard = TASKS.lock().unwrap();
+
+        // Drain any stray finished tasks to avoid cross-test interference.
+        while guard.try_join_next().is_some() {}
+
+        assert!(guard.is_empty(), "TASKS should be empty before starting this test");
+        assert_eq!(guard.len(), 0, "TASKS length should be zero");
+        assert!(
+            guard.try_join_next().is_none(),
+            "try_join_next must return None when no tasks are ready"
+        );
+    }
+
+    #[test]
+    fn test_joinset_spawn_on_works_with_runtime() {
+        // Mimic the production pattern: spawn tasks on the shared runtime handle and join them all.
+        let mut js = JoinSet::new();
+        js.spawn_on(async { 2 }, RUNTIME.handle());
+        js.spawn_on(async { 3 }, RUNTIME.handle());
+
+        let mut results = Vec::new();
+        RUNTIME.block_on(async {
+            while let Some(res) = js.join_next().await {
+                results.push(res.expect("task panicked"));
+            }
+        });
+
+        results.sort();
+        assert_eq!(results, vec![2, 3], "All spawned tasks should complete with expected values");
+        assert!(js.is_empty(), "JoinSet should be empty after joining all tasks");
+    }
+
+    #[test]
+    fn test_worker_thread_mapping_function_variants() {
+        // Validate the mapping logic used to compute worker thread count:
+        // (available_parallelism / 2).clamp(2, 8)
+        fn map(n: usize) -> usize { (n / 2).clamp(2, 8) }
+
+        let cases = [
+            (1, 2),
+            (2, 2),
+            (3, 2),
+            (4, 2),
+            (5, 2),
+            (6, 3),
+            (8, 4),
+            (12, 6),
+            (16, 8),
+            (30, 8),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(map(input), expected, "map({input}) should be {expected}");
+        }
+    }
+
+    #[test]
+    fn test_workspace_json_structure_deep() {
+        // Build a minimal workspace mirroring handle_analyzed_result's structure and validate JSON.
+        let mut file_map: HashMap<String, File> =
+            HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+        file_map.insert(
+            "main.rs".to_string(),
+            File { items: smallvec::smallvec![Function::new(7)] },
+        );
+        let krate = Crate(file_map);
+
+        let mut ws_map: HashMap<String, Crate> =
+            HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+        ws_map.insert("my_crate".to_string(), krate);
+        let ws = Workspace(ws_map);
+
+        let json_str = serde_json::to_string(&ws).expect("serialize workspace");
+        let v: Value = serde_json::from_str(&json_str).expect("parse json");
+
+        assert!(v.get("my_crate").is_some(), "top-level crate key missing");
+        assert!(v["my_crate"].get("main.rs").is_some(), "file key missing");
+        let items = v["my_crate"]["main.rs"]["items"].as_array().expect("items array");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["fn_id"].as_i64().unwrap(), 7);
+    }
+
+    #[test]
+    fn test_version_flag_detection_edge_cases() {
+        // Mirror the logic in run_compiler for deciding to defer to default rustc.
+        let is_default = |arg: &str| arg == "-vV" || arg == "--version" || arg.starts_with("--print");
+
+        // Positive cases
+        assert!(is_default("--print=target-list"));
+        assert!(is_default("--print"));
+        assert!(is_default("--printsomething")); // starts_with("--print") is true per implementation
+
+        // Negative cases
+        assert!(!is_default("--help"));
+        assert!(!is_default("-Zunstable-options"));
+        assert!(!is_default("print")); // Missing leading dashes
     }
 }

@@ -280,7 +280,8 @@ mod tests {
             assert_eq!(
                 Shell::from_shell_path(path),
                 expected,
-                "Failed for path: {path}"
+                "Failed for path: {}",
+                path
             );
         }
     }
@@ -320,7 +321,8 @@ mod tests {
             let detected = Shell::from_shell_path(shell_path);
             assert!(
                 detected.is_some(),
-                "Should detect shell from path: {shell_path}"
+                "Should detect shell from path: {}",
+                shell_path
             );
         }
 
@@ -396,7 +398,7 @@ mod tests {
         let shell = Shell::Bash;
 
         // Test Clone
-        let cloned = shell;
+        let cloned = shell.clone();
         assert_eq!(shell, cloned);
 
         // Test Copy
@@ -433,7 +435,8 @@ mod tests {
             let parsed_shell = <Shell as FromStr>::from_str(&display_str).unwrap();
             assert_eq!(
                 shell, parsed_shell,
-                "Display and parse should roundtrip for {shell:?}"
+                "Display and parse should roundtrip for {:?}",
+                shell
             );
         }
     }
@@ -477,5 +480,128 @@ mod tests {
 
         // Test case sensitivity in file stem extraction
         assert_eq!(Shell::from_shell_path("/usr/bin/BASH"), None); // Case matters for file stem
+    }
+}
+
+#[cfg(test)]
+mod more_shell_tests {
+    // Test framework: Rust built-in test harness (`cargo test`) with #[test]; no external testing libraries detected.
+    use super::*;
+    use clap::Command;
+    use clap_complete::shells;
+
+    #[test]
+    fn test_from_str_rejects_aliases_and_whitespace() {
+        use std::str::FromStr;
+        let cases = [
+            "nu",             // alias not supported by FromStr
+            " pwsh",          // unsupported alias with leading space
+            "pwsh",           // unsupported alias
+            "bash ",          // trailing whitespace
+            " powerShell ",   // mixed case and surrounding whitespace
+            " elvish ",
+            " fish ",
+            " zsh ",
+        ];
+        for case in cases {
+            let res = <Shell as FromStr>::from_str(case);
+            assert!(res.is_err(), "Expected error for input {:?}", case);
+            assert_eq!(res.unwrap_err(), format!("invalid variant: {}", case));
+        }
+    }
+
+    #[test]
+    fn test_from_shell_path_recognizes_powershell_ise_and_nushell_exe() {
+        assert_eq!(
+            Shell::from_shell_path("powershell_ise.exe"),
+            Some(Shell::PowerShell)
+        );
+        assert_eq!(
+            Shell::from_shell_path("nushell.exe"),
+            Some(Shell::Nushell)
+        );
+    }
+
+    #[test]
+    fn test_from_shell_path_pwsh_not_recognized() {
+        assert_eq!(Shell::from_shell_path("pwsh"), None);
+        assert_eq!(Shell::from_shell_path("pwsh.exe"), None);
+    }
+
+    #[test]
+    fn test_from_shell_path_case_sensitivity_for_nu() {
+        // Ensure case-sensitive file stem behavior for Nushell detection
+        assert_eq!(Shell::from_shell_path("NU"), None);
+    }
+
+    #[test]
+    fn test_file_name_extensions_by_shell() {
+        let name = "comp-test";
+
+        // Shells with well-known completion file extensions
+        let cases = [
+            (Shell::Bash, ".bash"),
+            (Shell::Fish, ".fish"),
+            (Shell::Elvish, ".elvish"),
+            (Shell::PowerShell, ".ps1"),
+        ];
+        for (shell, ext) in cases {
+            let fname = shell.file_name(name);
+            assert!(fname.ends_with(ext), "{:?} file_name should end with {}", shell, ext);
+            assert!(fname.contains(name), "Filename should contain app name: {}", fname);
+        }
+
+        // Zsh typically uses a leading underscore file (e.g., "_comp-test") but allow .zsh too
+        let z = Shell::Zsh.file_name(name);
+        assert!(
+            z.starts_with('_') || z.ends_with(".zsh"),
+            "Zsh filename unexpected: {}",
+            z
+        );
+        assert!(
+            z.contains(name) || z.starts_with('_'),
+            "Zsh filename should indicate the app name: {}",
+            z
+        );
+
+        // Nushell should use .nu extension
+        let nu = Shell::Nushell.file_name(name);
+        assert!(nu.ends_with(".nu"), "Nushell filename should end with .nu; got {}", nu);
+        assert!(nu.contains(name), "Nushell filename should contain app name: {}", nu);
+    }
+
+    #[test]
+    fn test_generate_non_empty_all_shells() {
+        let cmd = Command::new("comp-test").bin_name("comp-test");
+        for shell in [Shell::Bash, Shell::Elvish, Shell::Fish, Shell::PowerShell, Shell::Zsh, Shell::Nushell] {
+            let mut buf = Vec::new();
+            shell.generate(&cmd, &mut buf);
+            assert!(!buf.is_empty(), "Expected non-empty completion for {:?}", shell);
+            let content = String::from_utf8_lossy(&buf);
+            if matches!(shell, Shell::Zsh) {
+                assert!(
+                    content.contains("comp-test") || content.contains("_comp-test"),
+                    "Zsh completion should reference the app name or function; got: {}",
+                    &*content
+                );
+            } else {
+                assert!(
+                    content.contains("comp-test"),
+                    "Completion should contain app name for {:?}. Output: {}",
+                    shell,
+                    &*content
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_to_standard_shell_exact_values() {
+        assert_eq!(Shell::Bash.to_standard_shell(), Some(shells::Shell::Bash));
+        assert_eq!(Shell::Elvish.to_standard_shell(), Some(shells::Shell::Elvish));
+        assert_eq!(Shell::Fish.to_standard_shell(), Some(shells::Shell::Fish));
+        assert_eq!(Shell::PowerShell.to_standard_shell(), Some(shells::Shell::PowerShell));
+        assert_eq!(Shell::Zsh.to_standard_shell(), Some(shells::Shell::Zsh));
+        assert_eq!(Shell::Nushell.to_standard_shell(), None);
     }
 }
