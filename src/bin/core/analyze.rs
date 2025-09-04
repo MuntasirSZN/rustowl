@@ -1,4 +1,5 @@
 mod polonius_analyzer;
+mod shared;
 mod transform;
 
 use super::cache;
@@ -6,11 +7,7 @@ use rustc_borrowck::consumers::{
     ConsumerOptions, PoloniusInput, PoloniusOutput, get_body_with_borrowck_facts,
 };
 use rustc_hir::def_id::{LOCAL_CRATE, LocalDefId};
-use rustc_middle::{
-    mir::{BasicBlock, Local},
-    ty::TyCtxt,
-};
-use rustc_span::Span;
+use rustc_middle::{mir::Local, ty::TyCtxt};
 use rustowl::models::FoldIndexMap as HashMap;
 use rustowl::models::range_vec_from_vec;
 use rustowl::models::*;
@@ -31,15 +28,6 @@ pub struct AnalyzeResult {
 pub enum MirAnalyzerInitResult {
     Cached(Box<AnalyzeResult>),
     Analyzer(MirAnalyzeFuture),
-}
-
-fn range_from_span(source: &str, span: Span, offset: u32) -> Option<Range> {
-    let from = Loc::new(source, span.lo().0, offset);
-    let until = Loc::new(source, span.hi().0, offset);
-    Range::new(from, until)
-}
-fn sort_locs(v: &mut [(BasicBlock, usize)]) {
-    v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 }
 
 pub struct MirAnalyzer {
@@ -192,7 +180,7 @@ impl MirAnalyzer {
         let mut result = DeclVec::with_capacity(self.local_decls.len());
 
         for (local, ty) in &self.local_decls {
-            let ty = ty.clone();
+            let ty = smol_str::SmolStr::from(ty.as_str());
             let must_live_at = must_live_at.get(local).cloned().unwrap_or_default();
             let lives = lives.get(local).cloned().unwrap_or_default();
             let shared_borrow = self.shared_live.get(local).cloned().unwrap_or_default();
@@ -204,7 +192,7 @@ impl MirAnalyzer {
             let decl = if let Some((span, name)) = user_vars.get(local).cloned() {
                 MirDecl::User {
                     local: fn_local,
-                    name,
+                    name: smol_str::SmolStr::from(name.as_str()),
                     span,
                     ty,
                     lives: range_vec_from_vec(lives),

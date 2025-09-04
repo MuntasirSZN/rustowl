@@ -14,7 +14,10 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Configuration
-BENCHMARK_NAME="rustowl_bench_simple"
+BENCHMARK_NAME=(
+	"rustowl_bench_simple"
+	"line_col_bench"
+)
 
 # Look for existing test packages in the repo
 TEST_PACKAGES=(
@@ -231,7 +234,8 @@ check_prerequisites() {
 	fi
 
 	# Show current Rust version
-	local rust_version=$(rustc --version)
+	local rust_version
+	rust_version=$(rustc --version)
 	if [[ "$SHOW_OUTPUT" == "true" ]]; then
 		echo -e "${GREEN}✓ Rust: $rust_version${NC}"
 		echo -e "${GREEN}✓ Cargo: $(cargo --version)${NC}"
@@ -296,34 +300,35 @@ run_benchmarks() {
 	if [[ -d "./benches" ]] && find "./benches" -name "*.rs" | head -1 >/dev/null 2>&1; then
 		# Prepare benchmark command
 		local bench_cmd="cargo bench"
-		local bench_args=""
+		local bench_args=()
 
 		# Use cargo-criterion if available and not doing baseline operations
 		if command -v cargo-criterion >/dev/null 2>&1 && [[ -z "$SAVE_BASELINE" && "$COMPARE_MODE" != "true" ]]; then
 			bench_cmd="cargo criterion"
 		fi
 
-		# Add baseline arguments if saving
+		# Add all benchmark names defined in BENCHMARK_NAME array
+		if [[ "${#BENCHMARK_NAME[@]}" -gt 0 ]]; then
+			for bn in "${BENCHMARK_NAME[@]}"; do
+				bench_args+=(--bench "$bn")
+			done
+		fi
+
+		# Baseline save / compare options (Criterion)
 		if [[ -n "$SAVE_BASELINE" ]]; then
-			bench_args="$bench_args --bench rustowl_bench_simple -- --save-baseline $SAVE_BASELINE"
-		fi
-
-		# Add baseline arguments if comparing
-		if [[ "$COMPARE_MODE" == "true" && -n "$LOAD_BASELINE" ]]; then
-			bench_args="$bench_args --bench rustowl_bench_simple -- --baseline $LOAD_BASELINE"
-		fi
-
-		# If no baseline operations, run all benchmarks
-		if [[ -z "$SAVE_BASELINE" && "$COMPARE_MODE" != "true" ]]; then
-			bench_args="$bench_args --bench rustowl_bench_simple"
+			bench_args+=(-- --save-baseline "$SAVE_BASELINE")
+		elif [[ "$COMPARE_MODE" == "true" && -n "$LOAD_BASELINE" ]]; then
+			bench_args+=(-- --baseline "$LOAD_BASELINE")
 		fi
 
 		# Run the benchmarks
 		if [[ "$SHOW_OUTPUT" == "true" ]]; then
-			echo -e "${BLUE}Running: $bench_cmd $bench_args${NC}"
-			$bench_cmd "$bench_args"
+			echo -e "${BLUE}Running: $bench_cmd ${bench_args[*]}${NC}"
+			# shellcheck disable=SC2086
+			$bench_cmd "${bench_args[@]}"
 		else
-			$bench_cmd "$bench_args" --quiet 2>/dev/null || $bench_cmd "$bench_args" >/dev/null 2>&1
+			# shellcheck disable=SC2086
+			$bench_cmd "${bench_args[@]}" --quiet 2>/dev/null || $bench_cmd "${bench_args[@]}" >/dev/null 2>&1
 		fi
 	else
 		if [[ "$SHOW_OUTPUT" == "true" ]]; then
@@ -343,7 +348,8 @@ run_benchmarks() {
 		fi
 
 		# Time the analysis of the test package
-		local start_time=$(date +%s.%N 2>/dev/null || date +%s)
+		local start_time end_time duration
+		start_time=$(date +%s.%N 2>/dev/null || date +%s)
 
 		if [[ "$SHOW_OUTPUT" == "true" ]]; then
 			timeout 120 "$rustowl_binary" check "$TEST_PACKAGE_PATH" 2>/dev/null || true
@@ -351,10 +357,9 @@ run_benchmarks() {
 			timeout 120 "$rustowl_binary" check "$TEST_PACKAGE_PATH" >/dev/null 2>&1 || true
 		fi
 
-		local end_time=$(date +%s.%N 2>/dev/null || date +%s)
+		end_time=$(date +%s.%N 2>/dev/null || date +%s)
 
 		# Calculate duration (handle both nanosecond and second precision)
-		local duration
 		if command -v bc >/dev/null 2>&1 && [[ "$start_time" == *.* ]]; then
 			duration=$(echo "$end_time - $start_time" | bc -l 2>/dev/null || echo "N/A")
 		else
@@ -378,7 +383,8 @@ run_benchmarks() {
 
 		# Compare timing if in compare mode
 		if [[ "$COMPARE_MODE" == "true" && -f "baselines/performance/$LOAD_BASELINE/analysis_time.txt" ]]; then
-			local baseline_time=$(cat "baselines/performance/$LOAD_BASELINE/analysis_time.txt")
+			local baseline_time
+			baseline_time=$(cat "baselines/performance/$LOAD_BASELINE/analysis_time.txt")
 			compare_analysis_times "$baseline_time" "$duration"
 		fi
 	else
@@ -409,7 +415,8 @@ compare_analysis_times() {
 	if command -v bc >/dev/null 2>&1; then
 		change=$(echo "scale=2; (($current_time - $baseline_time) / $baseline_time) * 100" | bc -l 2>/dev/null || echo 0)
 	fi
-	local threshold_num=$(echo "$REGRESSION_THRESHOLD" | tr -d '%')
+	local threshold_num
+	threshold_num=$(echo "$REGRESSION_THRESHOLD" | tr -d '%')
 	# Report comparison
 	if [[ "$SHOW_OUTPUT" == "true" ]]; then
 		echo -e "${BLUE}Analysis Time Comparison:${NC}"
@@ -485,7 +492,11 @@ EOF
 				echo "" >>benchmark-summary.txt
 				echo "### Summary Statistics" >>benchmark-summary.txt
 				echo "Sample Size: $(find "$criterion_dir" -name "sample.json" | head -1 | xargs jq -r 'length' 2>/dev/null || echo 'N/A') measurements per benchmark" >>benchmark-summary.txt
-				measurement_time=$(find "$criterion_dir" -name "estimates.json" -exec jq -r ".measurement_time" {} 2>/dev/null | head -1 || echo "300")
+				local measurement_time="300" first_estimate
+				first_estimate=$(find "$criterion_dir" -name "estimates.json" -print -quit 2>/dev/null || true)
+				if [[ -n "$first_estimate" ]]; then
+					measurement_time=$(jq -r '.measurement_time // 300' "$first_estimate" 2>/dev/null || echo "300")
+				fi
 				echo "Measurement Time: ${measurement_time}s per benchmark" >>benchmark-summary.txt
 				echo "Warm-up Time: 5s per benchmark" >>benchmark-summary.txt
 			else
@@ -585,13 +596,15 @@ EOF
 
 		# Add analysis timing if available
 		if [[ -n "$SAVE_BASELINE" && -f "baselines/performance/$SAVE_BASELINE/analysis_time.txt" ]]; then
-			local analysis_time=$(cat "baselines/performance/$SAVE_BASELINE/analysis_time.txt")
+			local analysis_time
+			analysis_time=$(cat "baselines/performance/$SAVE_BASELINE/analysis_time.txt")
 			echo "Analysis Time: ${analysis_time}s" >>benchmark-summary.txt
 		fi
 
 		# Add comparison info if available
 		if [[ "$COMPARE_MODE" == "true" && -f "baselines/performance/$LOAD_BASELINE/analysis_time.txt" ]]; then
-			local baseline_time=$(cat "baselines/performance/$LOAD_BASELINE/analysis_time.txt")
+			local baseline_time
+			baseline_time=$(cat "baselines/performance/$LOAD_BASELINE/analysis_time.txt")
 			echo "Baseline Time: ${baseline_time}s" >>benchmark-summary.txt
 			echo "Threshold: $REGRESSION_THRESHOLD" >>benchmark-summary.txt
 		fi

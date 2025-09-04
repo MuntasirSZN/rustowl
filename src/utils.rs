@@ -64,27 +64,29 @@ pub fn merge_ranges(r1: Range, r2: Range) -> Option<Range> {
 
 /// Eliminates overlapping and adjacent ranges by merging them.
 ///
-/// Takes a vector of ranges and repeatedly merges overlapping or adjacent
-/// ranges until no more merges are possible, returning the minimal set
-/// of non-overlapping ranges.
-pub fn eliminated_ranges(ranges: Vec<Range>) -> Vec<Range> {
-    let mut ranges = ranges;
-    let mut i = 0;
-    'outer: while i < ranges.len() {
-        let mut j = 0;
-        while j < ranges.len() {
-            if i != j
-                && let Some(merged) = merge_ranges(ranges[i], ranges[j])
-            {
-                ranges[i] = merged;
-                ranges.remove(j);
-                continue 'outer;
-            }
-            j += 1;
-        }
-        i += 1;
+/// Optimized implementation: O(n log n) sort + linear merge instead of
+/// the previous O(n^2) pairwise merging loop. Keeps behavior identical.
+pub fn eliminated_ranges(mut ranges: Vec<Range>) -> Vec<Range> {
+    if ranges.len() <= 1 {
+        return ranges;
     }
-    ranges
+    // Sort by start, then end
+    ranges.sort_by_key(|r| (r.from().0, r.until().0));
+    let mut merged: Vec<Range> = Vec::with_capacity(ranges.len());
+    let mut current = ranges[0];
+    for r in ranges.into_iter().skip(1) {
+        if r.from().0 <= current.until().0 || r.from().0 == current.until().0 {
+            // Overlapping or adjacent
+            if r.until().0 > current.until().0 {
+                current = Range::new(current.from(), r.until()).unwrap();
+            }
+        } else {
+            merged.push(current);
+            current = r;
+        }
+    }
+    merged.push(current);
+    merged
 }
 
 /// Version of [`eliminated_ranges`] that works with SmallVec.
@@ -165,25 +167,50 @@ pub fn mir_visit(func: &Function, visitor: &mut impl MirVisitor) {
 /// line and column position. Handles CR characters consistently with
 /// the Rust compiler by ignoring them.
 pub fn index_to_line_char(s: &str, idx: Loc) -> (u32, u32) {
-    let mut line = 0;
-    let mut col = 0;
-    let mut char_idx = 0u32;
+    use memchr::memchr_iter;
+    let target = idx.0;
+    let mut line = 0u32;
+    let mut col = 0u32;
+    let mut logical_idx = 0u32; // counts chars excluding CR
+    let mut seg_start = 0usize;
 
-    // Process characters directly without allocating a new string
-    for c in s.chars() {
-        if char_idx == idx.0 {
-            return (line, col);
-        }
-
-        // Skip CR characters (compiler ignores them)
-        if c != '\r' {
-            if c == '\n' {
+    // Scan newline boundaries quickly, counting chars inside each segment.
+    for nl in memchr_iter(b'\n', s.as_bytes()) {
+        for ch in s[seg_start..=nl].chars() {
+            if ch == '\r' {
+                continue;
+            }
+            if logical_idx == target {
+                return (line, col);
+            }
+            if ch == '\n' {
                 line += 1;
                 col = 0;
             } else {
                 col += 1;
             }
-            char_idx += 1;
+            logical_idx += 1;
+        }
+        seg_start = nl + 1;
+        if logical_idx > target {
+            break;
+        }
+    }
+    if logical_idx <= target {
+        for ch in s[seg_start..].chars() {
+            if ch == '\r' {
+                continue;
+            }
+            if logical_idx == target {
+                return (line, col);
+            }
+            if ch == '\n' {
+                line += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+            logical_idx += 1;
         }
     }
     (line, col)
@@ -195,27 +222,49 @@ pub fn index_to_line_char(s: &str, idx: Loc) -> (u32, u32) {
 /// corresponding character index. Handles CR characters consistently
 /// with the Rust compiler by ignoring them.
 pub fn line_char_to_index(s: &str, mut line: u32, char: u32) -> u32 {
-    let mut col = 0;
-    let mut char_idx = 0u32;
+    use memchr::memchr_iter;
+    let mut consumed = 0u32; // logical chars excluding CR
+    let mut seg_start = 0usize;
 
-    // Process characters directly without allocating a new string
-    for c in s.chars() {
-        if line == 0 && col == char {
-            return char_idx;
+    for nl in memchr_iter(b'\n', s.as_bytes()) {
+        if line == 0 {
+            break;
         }
-
-        // Skip CR characters (compiler ignores them)
-        if c != '\r' {
-            if c == '\n' && line > 0 {
-                line -= 1;
-                col = 0;
-            } else {
-                col += 1;
+        for ch in s[seg_start..=nl].chars() {
+            if ch == '\r' {
+                continue;
             }
-            char_idx += 1;
+            consumed += 1;
         }
+        seg_start = nl + 1;
+        line -= 1;
     }
-    char_idx
+
+    if line > 0 {
+        for ch in s[seg_start..].chars() {
+            if ch == '\r' {
+                continue;
+            }
+            consumed += 1;
+        }
+        return consumed; // best effort if line exceeds file
+    }
+
+    let mut col_count = 0u32;
+    for ch in s[seg_start..].chars() {
+        if ch == '\r' {
+            continue;
+        }
+        if col_count == char {
+            return consumed;
+        }
+        if ch == '\n' {
+            return consumed;
+        }
+        consumed += 1;
+        col_count += 1;
+    }
+    consumed
 }
 
 #[cfg(test)]

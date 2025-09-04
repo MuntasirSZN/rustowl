@@ -50,7 +50,8 @@ pub fn collect_user_vars(
     );
     for debug in &body.var_debug_info {
         if let VarDebugInfoContents::Place(place) = &debug.value
-            && let Some(range) = super::range_from_span(source, debug.source_info.span, offset)
+            && let Some(range) =
+                super::shared::range_from_span(source, debug.source_info.span, offset)
         {
             result.insert(place.local, (range, debug.name.as_str().to_owned()));
         }
@@ -84,7 +85,7 @@ pub fn collect_basic_blocks(
                     let (place, rval) = &**v;
                     let target_local_index = place.local.as_u32();
                     let range_opt =
-                        super::range_from_span(source, statement.source_info.span, offset);
+                        super::shared::range_from_span(source, statement.source_info.span, offset);
                     let rv = match rval {
                         Rvalue::Use(Operand::Move(p)) => {
                             let local = p.local;
@@ -121,7 +122,7 @@ pub fn collect_basic_blocks(
                         rval: rv,
                     })
                 }
-                _ => super::range_from_span(source, statement.source_info.span, offset)
+                _ => super::shared::range_from_span(source, statement.source_info.span, offset)
                     .map(|range| MirStatement::Other { range }),
             })
             .collect();
@@ -132,20 +133,21 @@ pub fn collect_basic_blocks(
                 .terminator
                 .as_ref()
                 .and_then(|terminator| match &terminator.kind {
-                    TerminatorKind::Drop { place, .. } => super::range_from_span(
-                        source,
-                        terminator.source_info.span,
-                        offset,
-                    )
-                    .map(|range| MirTerminator::Drop {
-                        local: FnLocal::new(place.local.as_u32(), fn_id.local_def_index.as_u32()),
-                        range,
-                    }),
+                    TerminatorKind::Drop { place, .. } => {
+                        super::shared::range_from_span(source, terminator.source_info.span, offset)
+                            .map(|range| MirTerminator::Drop {
+                                local: FnLocal::new(
+                                    place.local.as_u32(),
+                                    fn_id.local_def_index.as_u32(),
+                                ),
+                                range,
+                            })
+                    }
                     TerminatorKind::Call {
                         destination,
                         fn_span,
                         ..
-                    } => super::range_from_span(source, *fn_span, offset).map(|fn_span| {
+                    } => super::shared::range_from_span(source, *fn_span, offset).map(|fn_span| {
                         MirTerminator::Call {
                             destination_local: FnLocal::new(
                                 destination.local.as_u32(),
@@ -154,8 +156,10 @@ pub fn collect_basic_blocks(
                             fn_span,
                         }
                     }),
-                    _ => super::range_from_span(source, terminator.source_info.span, offset)
-                        .map(|range| MirTerminator::Other { range }),
+                    _ => {
+                        super::shared::range_from_span(source, terminator.source_info.span, offset)
+                            .map(|range| MirTerminator::Other { range })
+                    }
                 });
 
         result.push(MirBasicBlock {
@@ -199,8 +203,8 @@ pub fn rich_locations_to_ranges(
         }
     }
 
-    super::sort_locs(&mut starts);
-    super::sort_locs(&mut mids);
+    super::shared::sort_locs(&mut starts);
+    super::shared::sort_locs(&mut mids);
 
     let n = starts.len().min(mids.len());
     if n != starts.len() || n != mids.len() {
