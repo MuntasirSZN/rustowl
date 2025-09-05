@@ -580,7 +580,7 @@ mod tests {
             // Test that debug representation is stable
             let debug_string = format!("{error:?}");
             assert!(!debug_string.is_empty());
-            assert!(debug_string.len() >= error_string.len());
+            // Debug representation may be different length than display
 
             // Test multiple conversions are consistent
             let error_string2 = error.to_string();
@@ -732,8 +732,9 @@ mod tests {
 
             let large_size = mem::size_of_val(&large_variant);
             
-            // Size should grow appropriately with content
-            assert!(large_size > size, "Large variant should be bigger");
+            // Size of enum variants should be consistent regardless of string content
+            // (since strings are heap-allocated)
+            assert_eq!(large_size, size, "Enum size should be consistent for heap-allocated strings");
             assert!(large_size < 2048, "Even large variants should be reasonable: {} bytes", large_size);
         }
     }

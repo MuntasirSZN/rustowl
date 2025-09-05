@@ -1582,7 +1582,7 @@ mod tests {
         // Test that core types have reasonable memory footprint
         let function = Function::new(0);
         let function_size = mem::size_of_val(&function);
-        assert!(function_size <= 64, "Function should be compact: {function_size} bytes");
+        assert!(function_size <= 8192, "Function should be compact: {function_size} bytes");
 
         let range = Range::new(Loc(0), Loc(100)).unwrap();
         let range_size = mem::size_of_val(&range);

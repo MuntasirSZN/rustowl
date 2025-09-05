@@ -211,11 +211,19 @@ fn test_is_cache_with_true_values() {
 #[test]
 fn test_get_cache_path() {
     // Test with no env var
-    let old_value = env::var("RUSTOWL_CACHE_DIR").ok();
-    unsafe {
-        env::remove_var("RUSTOWL_CACHE_DIR");
-    }
-    assert!(get_cache_path().is_none());
+    with_env("RUSTOWL_CACHE_DIR", "", || {
+        // First remove the var
+        let old_value = env::var("RUSTOWL_CACHE_DIR").ok();
+        unsafe {
+            env::remove_var("RUSTOWL_CACHE_DIR");
+        }
+        let result = get_cache_path();
+        // Restore
+        if let Some(v) = old_value {
+            unsafe { env::set_var("RUSTOWL_CACHE_DIR", v); }
+        }
+        assert!(result.is_none());
+    });
 
     // Test with empty value
     with_env("RUSTOWL_CACHE_DIR", "", || {
@@ -238,13 +246,6 @@ fn test_get_cache_path() {
         let path = get_cache_path().unwrap();
         assert_eq!(path, PathBuf::from("/tmp/cache"));
     });
-
-    // Restore old value
-    if let Some(v) = old_value {
-        unsafe {
-            env::set_var("RUSTOWL_CACHE_DIR", v);
-        }
-    }
 }
 
 #[test]
@@ -351,42 +352,18 @@ fn test_get_cache_config_with_env_vars() {
 
 #[test]
 fn test_cache_config_multiple_env_vars() {
-    // Test multiple environment variables at once
-    let old_entries = env::var("RUSTOWL_CACHE_MAX_ENTRIES").ok();
-    let old_memory = env::var("RUSTOWL_CACHE_MAX_MEMORY_MB").ok();
-    let old_eviction = env::var("RUSTOWL_CACHE_EVICTION").ok();
-    let old_validate = env::var("RUSTOWL_CACHE_VALIDATE_FILES").ok();
-
-    unsafe {
-        env::set_var("RUSTOWL_CACHE_MAX_ENTRIES", "750");
-        env::set_var("RUSTOWL_CACHE_MAX_MEMORY_MB", "150");
-        env::set_var("RUSTOWL_CACHE_EVICTION", "fifo");
-        env::set_var("RUSTOWL_CACHE_VALIDATE_FILES", "false");
-    }
-
-    let config = get_cache_config();
-    assert_eq!(config.max_entries, 750);
-    assert_eq!(config.max_memory_bytes, 150 * 1024 * 1024);
-    assert!(!config.use_lru_eviction);
-    assert!(!config.validate_file_mtime);
-
-    // Restore old values
-    unsafe {
-        match old_entries {
-            Some(v) => env::set_var("RUSTOWL_CACHE_MAX_ENTRIES", v),
-            None => env::remove_var("RUSTOWL_CACHE_MAX_ENTRIES"),
-        }
-        match old_memory {
-            Some(v) => env::set_var("RUSTOWL_CACHE_MAX_MEMORY_MB", v),
-            None => env::remove_var("RUSTOWL_CACHE_MAX_MEMORY_MB"),
-        }
-        match old_eviction {
-            Some(v) => env::set_var("RUSTOWL_CACHE_EVICTION", v),
-            None => env::remove_var("RUSTOWL_CACHE_EVICTION"),
-        }
-        match old_validate {
-            Some(v) => env::set_var("RUSTOWL_CACHE_VALIDATE_FILES", v),
-            None => env::remove_var("RUSTOWL_CACHE_VALIDATE_FILES"),
-        }
-    }
+    // Test multiple environment variables at once using with_env to avoid conflicts
+    with_env("RUSTOWL_CACHE_MAX_ENTRIES", "750", || {
+        with_env("RUSTOWL_CACHE_MAX_MEMORY_MB", "150", || {
+            with_env("RUSTOWL_CACHE_EVICTION", "fifo", || {
+                with_env("RUSTOWL_CACHE_VALIDATE_FILES", "false", || {
+                    let config = get_cache_config();
+                    assert_eq!(config.max_entries, 750);
+                    assert_eq!(config.max_memory_bytes, 150 * 1024 * 1024);
+                    assert!(!config.use_lru_eviction);
+                    assert!(!config.validate_file_mtime);
+                });
+            });
+        });
+    });
 }

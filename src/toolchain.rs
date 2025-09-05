@@ -1048,16 +1048,28 @@ mod tests {
         use std::ffi::OsString;
         
         // Test path splitting with various separators
-        let test_cases = [
-            ("", 0),                                    // Empty
-            ("/usr/lib", 1),                           // Single path
-            ("/usr/lib:/lib", 2),                      // Unix style
-            ("/usr/lib:/lib:/usr/local/lib", 3),       // Multiple Unix
-            ("C:\\Windows\\System32", 1),              // Windows single
-            ("C:\\Windows\\System32;D:\\Tools", 2),    // Windows multiple
-            ("/path with spaces:/another path", 2),    // Spaces
-            ("/path/with/unicode/测试:/another", 2),    // Unicode
-        ];
+        let test_cases = if cfg!(windows) {
+            vec![
+                ("", 0),                                    // Empty
+                ("/usr/lib", 1),                           // Single path
+                ("/usr/lib:/lib", 2),                      // Unix style (still works on Windows)
+                ("/usr/lib:/lib:/usr/local/lib", 3),       // Multiple Unix
+                ("C:\\Windows\\System32", 1),              // Windows single
+                ("C:\\Windows\\System32;D:\\Tools", 2),    // Windows multiple
+                ("/path with spaces:/another path", 2),    // Spaces
+                ("/path/with/unicode/测试:/another", 2),    // Unicode
+            ]
+        } else {
+            vec![
+                ("", 0),                                    // Empty
+                ("/usr/lib", 1),                           // Single path
+                ("/usr/lib:/lib", 2),                      // Unix style
+                ("/usr/lib:/lib:/usr/local/lib", 3),       // Multiple Unix
+                ("/usr/lib;/lib", 1),                      // Windows separator ignored on Unix
+                ("/path with spaces:/another path", 2),    // Spaces
+                ("/path/with/unicode/测试:/another", 2),    // Unicode
+            ]
+        };
 
         for (path_str, expected_count) in test_cases {
             let paths: Vec<PathBuf> = std::env::split_paths(&OsString::from(path_str)).collect();
@@ -1255,7 +1267,9 @@ mod tests {
 
             for chunk_size in chunks {
                 total_received += chunk_size;
-                let current_progress = (total_received * 100) / effective_length;
+                // Ensure we don't calculate progress above 100%
+                let capped_received = std::cmp::min(total_received, effective_length);
+                let current_progress = (capped_received * 100) / effective_length;
                 
                 if last_reported != current_progress {
                     progress_points.push(current_progress);
