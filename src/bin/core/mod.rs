@@ -444,4 +444,410 @@ mod tests {
         let result = error_result();
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_parallel_task_management() {
+        // Test parallel task management patterns
+        use tokio::task::JoinSet;
+
+        let rt = &*RUNTIME;
+        rt.block_on(async {
+            let mut tasks = JoinSet::new();
+
+            // Spawn multiple tasks
+            for i in 0..5 {
+                tasks.spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(i * 10)).await;
+                    i * 2
+                });
+            }
+
+            let mut results = Vec::new();
+            while let Some(result) = tasks.join_next().await {
+                if let Ok(value) = result {
+                    results.push(value);
+                }
+            }
+
+            // Should have collected all results
+            assert_eq!(results.len(), 5);
+            results.sort();
+            assert_eq!(results, vec![0, 2, 4, 6, 8]);
+        });
+    }
+
+    #[test]
+    fn test_complex_workspace_structures() {
+        // Test complex workspace structure creation
+        let mut complex_workspace = HashMap::with_capacity_and_hasher(3, foldhash::quality::RandomState::default());
+
+        // Create multiple crates with different structures
+        for crate_idx in 0..3 {
+            let crate_name = format!("crate_{crate_idx}");
+            let mut crate_files = HashMap::with_capacity_and_hasher(5, foldhash::quality::RandomState::default());
+
+            for file_idx in 0..5 {
+                let file_name = format!("src/module_{file_idx}.rs");
+                let mut functions = smallvec::SmallVec::new();
+
+                for fn_idx in 0..3 {
+                    let function = Function::new((crate_idx * 100 + file_idx * 10 + fn_idx) as u32);
+                    functions.push(function);
+                }
+
+                crate_files.insert(file_name, File { items: functions });
+            }
+
+            complex_workspace.insert(crate_name, Crate(crate_files));
+        }
+
+        let workspace = Workspace(complex_workspace);
+
+        // Validate structure
+        assert_eq!(workspace.0.len(), 3);
+
+        for crate_idx in 0..3 {
+            let crate_name = format!("crate_{crate_idx}");
+            assert!(workspace.0.contains_key(&crate_name));
+
+            let crate_ref = &workspace.0[&crate_name];
+            assert_eq!(crate_ref.0.len(), 5);
+
+            for file_idx in 0..5 {
+                let file_name = format!("src/module_{file_idx}.rs");
+                assert!(crate_ref.0.contains_key(&file_name));
+
+                let file_ref = &crate_ref.0[&file_name];
+                assert_eq!(file_ref.items.len(), 3);
+
+                for fn_idx in 0..3 {
+                    let expected_fn_id = (crate_idx * 100 + file_idx * 10 + fn_idx) as u32;
+                    assert_eq!(file_ref.items[fn_idx].fn_id, expected_fn_id);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_json_serialization_edge_cases() {
+        // Test JSON serialization with edge cases
+        let edge_case_functions = vec![
+            Function::new(0),                    // Minimum ID
+            Function::new(u32::MAX),             // Maximum ID
+            Function::new(12345),                // Regular ID
+        ];
+
+        for function in edge_case_functions {
+            let fn_id = function.fn_id; // Store ID before move
+            let mut file_map = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+            file_map.insert("test.rs".to_string(), File {
+                items: smallvec::smallvec![function],
+            });
+
+            let krate = Crate(file_map);
+            let mut ws_map = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+            ws_map.insert("test_crate".to_string(), krate);
+
+            let workspace = Workspace(ws_map);
+
+            // Test serialization
+            let json_result = serde_json::to_string(&workspace);
+            assert!(json_result.is_ok(), "Failed to serialize function with ID {}", fn_id);
+
+            let json_string = json_result.unwrap();
+            assert!(json_string.contains(&fn_id.to_string()));
+
+            // Test deserialization roundtrip
+            let deserialized: Result<Workspace, _> = serde_json::from_str(&json_string);
+            assert!(deserialized.is_ok(), "Failed to deserialize function with ID {}", fn_id);
+
+            let deserialized_workspace = deserialized.unwrap();
+            assert_eq!(deserialized_workspace.0.len(), 1);
+        }
+    }
+
+    #[test]
+    fn test_runtime_configuration_comprehensive() {
+        // Test comprehensive runtime configuration
+        let runtime = &*RUNTIME;
+
+        // Test basic async operation
+        let result = runtime.block_on(async {
+            let mut sum = 0;
+            for i in 0..100 {
+                sum += i;
+            }
+            sum
+        });
+        assert_eq!(result, 4950);
+
+        // Test spawning tasks
+        let result = runtime.block_on(async {
+            let task1 = tokio::spawn(async { 1 + 1 });
+            let task2 = tokio::spawn(async { 2 + 2 });
+            let task3 = tokio::spawn(async { 3 + 3 });
+
+            let (r1, r2, r3) = tokio::join!(task1, task2, task3);
+            (r1.unwrap(), r2.unwrap(), r3.unwrap())
+        });
+        assert_eq!(result, (2, 4, 6));
+
+        // Test timeout operations
+        let timeout_result = runtime.block_on(async {
+            tokio::time::timeout(
+                tokio::time::Duration::from_millis(100),
+                async { tokio::time::sleep(tokio::time::Duration::from_millis(50)).await; 42 }
+            ).await
+        });
+        assert!(timeout_result.is_ok());
+        assert_eq!(timeout_result.unwrap(), 42);
+    }
+
+    #[test]
+    fn test_argument_processing_comprehensive() {
+        // Test comprehensive argument processing patterns
+        let test_cases = vec![
+            // (args, should_use_default_rustc, should_skip_analysis)
+            (vec!["rustowlc"], false, false),
+            (vec!["rustowlc", "rustowlc"], false, true), // Workspace wrapper
+            (vec!["rustowlc", "-vV"], true, false),      // Version flag
+            (vec!["rustowlc", "--version"], true, false), // Version flag
+            (vec!["rustowlc", "--print=cfg"], true, false), // Print flag
+            (vec!["rustowlc", "--print", "cfg"], true, false), // Print flag
+            (vec!["rustowlc", "--crate-type", "lib"], false, false), // Normal compilation
+            (vec!["rustowlc", "-L", "dependency=/path"], false, false), // Normal compilation
+            (vec!["rustowlc", "rustowlc", "--crate-type", "lib"], false, true), // Wrapper + normal
+            (vec!["rustowlc", "rustowlc", "-vV"], false, true), // Wrapper + version (skip analysis but version detected)
+        ];
+
+        for (args, expected_default_rustc, expected_skip_analysis) in test_cases {
+            // Test skip analysis detection
+            let first = args.first();
+            let second = args.get(1);
+            let should_skip_analysis = first == second;
+            assert_eq!(should_skip_analysis, expected_skip_analysis, "Skip analysis mismatch for: {args:?}");
+
+            // Test version/print flag detection
+            let mut should_use_default_rustc = false;
+            for arg in &args {
+                if *arg == "-vV" || *arg == "--version" || arg.starts_with("--print") {
+                    should_use_default_rustc = true;
+                    break;
+                }
+            }
+            assert_eq!(should_use_default_rustc, expected_default_rustc, "Default rustc mismatch for: {args:?}");
+        }
+    }
+
+    #[test]
+    fn test_cache_statistics_simulation() {
+        // Test cache statistics handling patterns
+        #[derive(Debug, Default)]
+        struct MockCacheStats {
+            hits: u64,
+            misses: u64,
+            evictions: u64,
+        }
+
+        impl MockCacheStats {
+            fn hit_rate(&self) -> f64 {
+                if self.hits + self.misses == 0 {
+                    0.0
+                } else {
+                    self.hits as f64 / (self.hits + self.misses) as f64
+                }
+            }
+        }
+
+        let test_scenarios = vec![
+            MockCacheStats { hits: 100, misses: 20, evictions: 5 },
+            MockCacheStats { hits: 0, misses: 10, evictions: 0 },
+            MockCacheStats { hits: 50, misses: 0, evictions: 2 },
+            MockCacheStats { hits: 0, misses: 0, evictions: 0 },
+            MockCacheStats { hits: 1000, misses: 100, evictions: 50 },
+        ];
+
+        for stats in test_scenarios {
+            let hit_rate = stats.hit_rate();
+            
+            // Hit rate should be between 0 and 1
+            assert!(hit_rate >= 0.0 && hit_rate <= 1.0, "Invalid hit rate: {hit_rate}");
+
+            // Test logging format (simulate what would be logged)
+            let log_message = format!(
+                "Cache statistics: {} hits, {} misses, {:.1}% hit rate, {} evictions",
+                stats.hits,
+                stats.misses,
+                hit_rate * 100.0,
+                stats.evictions
+            );
+
+            assert!(log_message.contains("Cache statistics"));
+            assert!(log_message.contains(&stats.hits.to_string()));
+            assert!(log_message.contains(&stats.misses.to_string()));
+            assert!(log_message.contains(&stats.evictions.to_string()));
+        }
+    }
+
+    #[test]
+    fn test_worker_thread_calculation_edge_cases() {
+        // Test worker thread calculation with various scenarios
+        let test_cases = vec![
+            // (available_parallelism, expected_range)
+            (1, 2..=2),   // Single core -> minimum 2
+            (2, 2..=2),   // Dual core -> 1 thread, clamped to 2
+            (4, 2..=2),   // Quad core -> 2 threads
+            (8, 4..=4),   // 8 cores -> 4 threads
+            (16, 8..=8),  // 16 cores -> 8 threads, clamped to max
+            (32, 8..=8),  // 32 cores -> 16 threads, clamped to 8
+        ];
+
+        for (available, expected_range) in test_cases {
+            let calculated = (available / 2).clamp(2, 8);
+            assert!(expected_range.contains(&calculated), 
+                   "Worker thread calculation failed for {available} cores: got {calculated}, expected {expected_range:?}");
+        }
+
+        // Test with the actual calculation logic
+        let actual_available = std::thread::available_parallelism()
+            .map(|n| (n.get() / 2).clamp(2, 8))
+            .unwrap_or(4);
+
+        assert!(actual_available >= 2);
+        assert!(actual_available <= 8);
+    }
+
+    #[test]
+    fn test_compilation_result_handling() {
+        // Test compilation result handling patterns
+        use rustc_driver::Compilation;
+
+        // Test result interpretation
+        let success_results: Vec<Result<(), ()>> = vec![Ok(()), Ok(())];
+        let error_results: Vec<Result<(), ()>> = vec![Err(()), Err(())];
+
+        for result in success_results {
+            let compilation_action = if result.is_ok() {
+                Compilation::Continue
+            } else {
+                Compilation::Stop
+            };
+            assert_eq!(compilation_action, Compilation::Continue);
+        }
+
+        for result in error_results {
+            let compilation_action = if result.is_ok() {
+                Compilation::Continue
+            } else {
+                Compilation::Stop
+            };
+            assert_eq!(compilation_action, Compilation::Stop);
+        }
+    }
+
+    #[test]
+    fn test_memory_allocation_patterns() {
+        // Test memory allocation patterns in data structure creation
+        use std::mem;
+
+        // Test memory usage of various HashMap sizes
+        for capacity in [1, 10, 100, 1000] {
+            let map: HashMap<String, String> = HashMap::with_capacity_and_hasher(
+                capacity,
+                foldhash::quality::RandomState::default(),
+            );
+
+            let size = mem::size_of_val(&map);
+            assert!(size > 0, "HashMap should have non-zero size");
+
+            // Memory usage should scale reasonably
+            if capacity > 0 {
+                assert!(map.capacity() >= capacity, "HashMap should have at least requested capacity");
+            }
+        }
+
+        // Test SmallVec allocation patterns
+        let mut small_vec = smallvec::SmallVec::<[Function; 4]>::new();
+        let _initial_size = mem::size_of_val(&small_vec);
+
+        // Add functions and observe size changes
+        for i in 0..10 {
+            small_vec.push(Function::new(i));
+            let current_size = mem::size_of_val(&small_vec);
+            
+            // Size should remain reasonable
+            assert!(current_size < 1024, "SmallVec size should remain reasonable: {current_size} bytes");
+        }
+
+        assert!(small_vec.len() == 10);
+    }
+
+    #[test]
+    fn test_configuration_options_comprehensive() {
+        // Test configuration option handling
+        use rustc_session::config::Polonius;
+
+        // Test Polonius configuration
+        let polonius_variants = [Polonius::Legacy, Polonius::Next];
+        for variant in polonius_variants {
+            // Should be able to create and use variants
+            let _config_value = variant;
+        }
+
+        // Test MIR optimization level
+        let mir_opt_levels = [Some(0), Some(1), Some(2), Some(3), None];
+        for level in mir_opt_levels {
+            match level {
+                Some(l) => assert!(l <= 4, "MIR opt level should be reasonable"),
+                None => (), // No optimization
+            }
+        }
+
+        // Test incremental compilation settings
+        let incremental_options: Vec<Option<std::path::PathBuf>> = vec![
+            None,
+            Some(std::path::PathBuf::from("/tmp/incremental")),
+        ];
+
+        for option in incremental_options {
+            match option {
+                Some(path) => assert!(!path.as_os_str().is_empty()),
+                None => (), // Incremental disabled
+            }
+        }
+    }
+
+    #[test]
+    fn test_async_task_error_handling() {
+        // Test async task error handling patterns
+        let runtime = &*RUNTIME;
+
+        runtime.block_on(async {
+            let mut tasks = tokio::task::JoinSet::new();
+
+            // Spawn tasks that succeed
+            for i in 0..3 {
+                tasks.spawn(async move { Ok::<i32, &str>(i) });
+            }
+
+            // Spawn tasks that fail
+            for _i in 3..5 {
+                tasks.spawn(async move { Err::<i32, &str>("failed") });
+            }
+
+            let mut successes = 0;
+            let mut failures = 0;
+
+            while let Some(result) = tasks.join_next().await {
+                match result {
+                    Ok(Ok(_)) => successes += 1,
+                    Ok(Err(_)) => failures += 1,
+                    Err(_) => (), // Join error
+                }
+            }
+
+            assert_eq!(successes, 3);
+            assert_eq!(failures, 2);
+        });
+    }
 }

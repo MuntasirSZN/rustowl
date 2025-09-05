@@ -560,4 +560,336 @@ mod tests {
             },
         }
     }
+
+    #[test]
+    fn test_error_serialization_compatibility() {
+        // Test that errors work well with serialization frameworks (where applicable)
+        let errors = vec![
+            RustOwlError::Cache("serialization test".to_string()),
+            RustOwlError::Analysis("another test".to_string()),
+            RustOwlError::Toolchain("toolchain test".to_string()),
+            RustOwlError::Config("config test".to_string()),
+            RustOwlError::Lsp("lsp test".to_string()),
+        ];
+
+        for error in errors {
+            // Test that errors can be converted to strings reliably
+            let error_string = error.to_string();
+            assert!(!error_string.is_empty());
+
+            // Test that debug representation is stable
+            let debug_string = format!("{error:?}");
+            assert!(!debug_string.is_empty());
+            assert!(debug_string.len() >= error_string.len());
+
+            // Test multiple conversions are consistent
+            let error_string2 = error.to_string();
+            assert_eq!(error_string, error_string2);
+        }
+    }
+
+    #[test]
+    fn test_error_context_with_complex_error_types() {
+        // Test context with various complex error types
+        use std::num::{ParseFloatError, ParseIntError};
+
+        // Test with ParseIntError
+        let parse_int_result: std::result::Result<i32, ParseIntError> = "not_a_number".parse();
+        let with_context = parse_int_result.context("failed to parse integer");
+        assert!(with_context.is_err());
+
+        // Test with ParseFloatError  
+        let parse_float_result: std::result::Result<f64, ParseFloatError> = "not_a_float".parse();
+        let with_context = parse_float_result.context("failed to parse float");
+        assert!(with_context.is_err());
+
+        // Test with UTF8 error simulation
+        let invalid_utf8 = &[0xFF, 0xFE, 0xFD];
+        let utf8_result = std::str::from_utf8(invalid_utf8);
+        let with_context = utf8_result.context("invalid utf8 sequence");
+        assert!(with_context.is_err());
+    }
+
+    #[test]
+    fn test_error_downcast_patterns() {
+        // Test error downcasting patterns
+        let errors: Vec<Box<dyn std::error::Error + Send + Sync>> = vec![
+            Box::new(RustOwlError::Cache("cache error".to_string())),
+            Box::new(RustOwlError::Io(std::io::Error::other("io error"))),
+            Box::new(RustOwlError::Analysis("analysis error".to_string())),
+        ];
+
+        for boxed_error in errors {
+            // Test downcasting to RustOwlError
+            if let Ok(rustowl_error) = boxed_error.downcast::<RustOwlError>() {
+                match *rustowl_error {
+                    RustOwlError::Cache(_) | RustOwlError::Io(_) | RustOwlError::Analysis(_) => {
+                        // Successfully downcasted
+                    }
+                    _ => panic!("Unexpected error variant"),
+                }
+            } else {
+                panic!("Failed to downcast to RustOwlError");
+            }
+        }
+    }
+
+    #[test]
+    fn test_error_source_chain_traversal() {
+        // Test error source chain traversal
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "underlying cause");
+        let rustowl_error: RustOwlError = io_error.into();
+
+        // Test source method
+        if let RustOwlError::Io(ref inner_io) = rustowl_error {
+            assert_eq!(inner_io.kind(), std::io::ErrorKind::NotFound);
+            assert!(inner_io.to_string().contains("underlying cause"));
+        }
+
+        // Test error chain traversal
+        let std_error: &dyn std::error::Error = &rustowl_error;
+        let mut error_chain = Vec::new();
+        let mut current_error = Some(std_error);
+
+        while let Some(error) = current_error {
+            error_chain.push(error.to_string());
+            current_error = error.source();
+        }
+
+        assert!(!error_chain.is_empty());
+        assert!(error_chain[0].contains("I/O error"));
+    }
+
+    #[test]
+    fn test_error_context_trait_bounds_comprehensive() {
+        // Test that ErrorContext works with all expected trait bounds
+        
+        // Create a custom error that implements the required traits
+        #[derive(Debug)]
+        struct TestError {
+            message: String,
+        }
+
+        impl std::fmt::Display for TestError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "TestError: {}", self.message)
+            }
+        }
+
+        impl std::error::Error for TestError {}
+
+        // Test Send + Sync bounds
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<TestError>();
+
+        let test_error = TestError {
+            message: "test message".to_string(),
+        };
+        let result: std::result::Result<(), TestError> = Err(test_error);
+        let with_context = result.context("additional context");
+
+        assert!(with_context.is_err());
+        match with_context {
+            Err(RustOwlError::Analysis(msg)) => assert_eq!(msg, "additional context"),
+            _ => panic!("Expected Analysis error"),
+        }
+    }
+
+    #[test]
+    fn test_error_variant_memory_efficiency() {
+        // Test memory efficiency of different error variants
+        use std::mem;
+
+        let variants = vec![
+            RustOwlError::Cache("test".to_string()),
+            RustOwlError::Analysis("test".to_string()),
+            RustOwlError::Toolchain("test".to_string()),
+            RustOwlError::Config("test".to_string()),
+            RustOwlError::Lsp("test".to_string()),
+            RustOwlError::CargoMetadata("test".to_string()),
+            RustOwlError::Io(std::io::Error::other("test")),
+            RustOwlError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err()),
+        ];
+
+        for variant in variants {
+            let size = mem::size_of_val(&variant);
+            
+            // Error should be reasonably sized
+            assert!(size < 1024, "Error variant {:?} is too large: {} bytes", 
+                   mem::discriminant(&variant), size);
+
+            // Test that errors don't grow significantly with content
+            let large_message = "x".repeat(1000);
+            let large_variant = match variant {
+                RustOwlError::Cache(_) => RustOwlError::Cache(large_message),
+                RustOwlError::Analysis(_) => RustOwlError::Analysis(large_message),
+                RustOwlError::Toolchain(_) => RustOwlError::Toolchain(large_message),
+                RustOwlError::Config(_) => RustOwlError::Config(large_message),
+                RustOwlError::Lsp(_) => RustOwlError::Lsp(large_message),
+                RustOwlError::CargoMetadata(_) => RustOwlError::CargoMetadata(large_message),
+                _ => continue, // Skip variants that don't contain strings
+            };
+
+            let large_size = mem::size_of_val(&large_variant);
+            
+            // Size should grow appropriately with content
+            assert!(large_size > size, "Large variant should be bigger");
+            assert!(large_size < 2048, "Even large variants should be reasonable: {} bytes", large_size);
+        }
+    }
+
+    #[test]
+    fn test_error_formatting_edge_cases() {
+        // Test error formatting with edge cases
+        let edge_case_messages = vec![
+            "",                                    // Empty string
+            " ",                                   // Single space
+            "\n",                                  // Single newline
+            "\t",                                  // Single tab
+            "🦀",                                  // Single emoji
+            "test\0null",                          // Null character
+            "very long message", // Very long message
+            "unicode: 你好世界 🌍 здравствуй мир", // Mixed unicode
+            "quotes: \"double\" 'single' `backtick`", // Various quotes
+            "special: !@#$%^&*()_+-=[]{}|;:,.<>?", // Special characters
+            "escaped: \\n \\t \\r \\\\",          // Escaped sequences
+            "\u{200B}\u{FEFF}invisible",           // Zero-width characters
+        ];
+
+        for message in edge_case_messages {
+            let errors = vec![
+                RustOwlError::Cache(message.to_string()),
+                RustOwlError::Analysis(message.to_string()),
+                RustOwlError::Toolchain(message.to_string()),
+                RustOwlError::Config(message.to_string()),
+                RustOwlError::Lsp(message.to_string()),
+                RustOwlError::CargoMetadata(message.to_string()),
+            ];
+
+            for error in errors {
+                // Display should not panic
+                let display_str = error.to_string();
+                assert!(!display_str.is_empty() || message.is_empty());
+
+                // Debug should not panic
+                let debug_str = format!("{error:?}");
+                assert!(!debug_str.is_empty());
+
+                // Should contain the message (unless empty)
+                if !message.is_empty() {
+                    assert!(display_str.contains(message), 
+                           "Display should contain message for: {:?}", message);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_error_thread_safety_comprehensive() {
+        // Test comprehensive thread safety
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        // Test that errors can be shared across threads
+        let error = Arc::new(RustOwlError::Cache("shared error".to_string()));
+        let barrier = Arc::new(Barrier::new(3));
+
+        let handles: Vec<_> = (0..2).map(|i| {
+            let error_clone = Arc::clone(&error);
+            let barrier_clone = Arc::clone(&barrier);
+            
+            thread::spawn(move || {
+                barrier_clone.wait();
+                
+                // Each thread should be able to access the error
+                let error_str = error_clone.to_string();
+                assert!(error_str.contains("shared error"));
+                
+                // Create new errors in thread
+                let thread_error = RustOwlError::Analysis(format!("thread {i} error"));
+                assert!(thread_error.to_string().contains(&format!("thread {i}")));
+                
+                thread_error
+            })
+        }).collect();
+
+        barrier.wait(); // Synchronize all threads
+
+        // Collect results
+        let thread_errors: Vec<_> = handles.into_iter()
+            .map(|h| h.join().unwrap())
+            .collect();
+
+        assert_eq!(thread_errors.len(), 2);
+        for (i, error) in thread_errors.iter().enumerate() {
+            assert!(error.to_string().contains(&format!("thread {i}")));
+        }
+    }
+
+    #[test]
+    fn test_error_conversion_completeness() {
+        // Test comprehensive error conversions
+        
+        // Test all From implementations
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let rustowl_from_io: RustOwlError = io_error.into();
+        match rustowl_from_io {
+            RustOwlError::Io(_) => (),
+            _ => panic!("Expected Io variant"),
+        }
+
+        let json_error = serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err();
+        let rustowl_from_json: RustOwlError = json_error.into();
+        match rustowl_from_json {
+            RustOwlError::Json(_) => (),
+            _ => panic!("Expected Json variant"),
+        }
+
+        // Test manual construction of all variants
+        let all_variants = vec![
+            RustOwlError::Io(std::io::Error::other("io")),
+            RustOwlError::CargoMetadata("cargo".to_string()),
+            RustOwlError::Toolchain("toolchain".to_string()),
+            RustOwlError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err()),
+            RustOwlError::Cache("cache".to_string()),
+            RustOwlError::Lsp("lsp".to_string()),
+            RustOwlError::Analysis("analysis".to_string()),
+            RustOwlError::Config("config".to_string()),
+        ];
+
+        for error in all_variants {
+            // Each variant should implement required traits
+            let _display: String = error.to_string();
+            let _debug: String = format!("{error:?}");
+            let _std_error: &dyn std::error::Error = &error;
+        }
+    }
+
+    #[test]
+    fn test_error_context_performance() {
+        // Test performance characteristics of error context operations
+        use std::time::Instant;
+
+        let start = Instant::now();
+
+        // Perform many context operations
+        for i in 0..10000 {
+            let result: std::result::Result<(), std::io::Error> = Err(std::io::Error::other("test"));
+            let _with_context = result.context(&format!("iteration {i}"));
+        }
+
+        let duration = start.elapsed();
+        assert!(duration.as_millis() < 100, "Context operations should be fast: {duration:?}");
+
+        // Test with_context closure performance
+        let start = Instant::now();
+
+        for i in 0..10000 {
+            let result: std::result::Result<(), std::io::Error> = Err(std::io::Error::other("test"));
+            let _with_context = result.with_context(|| format!("closure iteration {i}"));
+        }
+
+        let closure_duration = start.elapsed();
+        assert!(closure_duration.as_millis() < 200, "Closure context operations should be reasonably fast: {closure_duration:?}");
+    }
 }

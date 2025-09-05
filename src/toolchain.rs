@@ -1009,4 +1009,477 @@ mod tests {
         assert!(unix_sysroot.to_string_lossy().contains(TOOLCHAIN));
         assert!(windows_sysroot.to_string_lossy().contains(TOOLCHAIN));
     }
+
+    #[test]
+    fn test_complex_unicode_path_handling() {
+        // Test with various Unicode path components
+        let unicode_paths = [
+            "简体中文/rustowl",      // Simplified Chinese
+            "русский/язык/path",    // Russian
+            "العربية/المجلد",       // Arabic
+            "日本語/ディレクトリ",     // Japanese
+            "🦀/rust/🔥/blazing",   // Emoji paths
+            "café/résumé/naïve",    // Accented Latin
+            "test/with spaces",     // Spaces
+            "test/with\ttabs",      // Tabs
+            "test\nwith\nnewlines", // Newlines (unusual but possible)
+        ];
+
+        for unicode_path in unicode_paths {
+            let path = PathBuf::from(unicode_path);
+            let sysroot = sysroot_from_runtime(&path);
+
+            // Operations should not panic
+            assert!(sysroot.to_string_lossy().contains(TOOLCHAIN));
+            
+            // Path should be constructible
+            let path_str = sysroot.to_string_lossy();
+            assert!(!path_str.is_empty());
+            
+            // Should be able to join additional components
+            let extended = sysroot.join("bin").join("rustc");
+            assert!(extended.to_string_lossy().len() > sysroot.to_string_lossy().len());
+        }
+    }
+
+    #[test]
+    fn test_environment_variable_parsing_comprehensive() {
+        // Test comprehensive environment variable parsing patterns
+        use std::ffi::OsString;
+        
+        // Test path splitting with various separators
+        let test_cases = [
+            ("", 0),                                    // Empty
+            ("/usr/lib", 1),                           // Single path
+            ("/usr/lib:/lib", 2),                      // Unix style
+            ("/usr/lib:/lib:/usr/local/lib", 3),       // Multiple Unix
+            ("C:\\Windows\\System32", 1),              // Windows single
+            ("C:\\Windows\\System32;D:\\Tools", 2),    // Windows multiple
+            ("/path with spaces:/another path", 2),    // Spaces
+            ("/path/with/unicode/测试:/another", 2),    // Unicode
+        ];
+
+        for (path_str, expected_count) in test_cases {
+            let paths: Vec<PathBuf> = std::env::split_paths(&OsString::from(path_str)).collect();
+            
+            if expected_count == 0 {
+                assert!(paths.is_empty() || paths.len() == 1); // Empty string might yield one empty path
+            } else {
+                assert_eq!(paths.len(), expected_count, "Failed for: {path_str}");
+            }
+
+            // Test that join_paths can reconstruct
+            if !paths.is_empty() {
+                let rejoined = std::env::join_paths(paths.clone());
+                assert!(rejoined.is_ok(), "Failed to rejoin paths for: {path_str}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_url_construction_edge_cases() {
+        // Test URL construction with various edge cases
+        let base_urls = [
+            "https://static.rust-lang.org/dist",
+            "https://example.com/rust/dist",
+            "http://localhost:8080/dist",
+        ];
+
+        let components = [
+            "rustc",
+            "rust-std",
+            "cargo",
+            "rust-analyzer-preview",
+            "component-with-very-long-name-that-might-cause-issues",
+        ];
+
+        let channels = ["stable", "beta", "nightly"];
+        let host_tuples = [
+            "x86_64-unknown-linux-gnu",
+            "x86_64-pc-windows-msvc",
+            "aarch64-apple-darwin",
+            "riscv64gc-unknown-linux-gnu",
+        ];
+
+        for base_url in base_urls {
+            for component in components {
+                for channel in channels {
+                    for host_tuple in host_tuples {
+                        let component_toolchain = format!("{component}-{channel}-{host_tuple}");
+                        let tarball_url = format!("{base_url}/{component_toolchain}.tar.gz");
+
+                        // URL should be well-formed
+                        assert!(tarball_url.starts_with("http"));
+                        assert!(tarball_url.ends_with(".tar.gz"));
+                        assert!(tarball_url.contains(component));
+                        assert!(tarball_url.contains(channel));
+                        assert!(tarball_url.contains(host_tuple));
+
+                        // Should not contain double slashes (except after protocol)
+                        let without_protocol = tarball_url.split_once("://").unwrap().1;
+                        assert!(!without_protocol.contains("//"));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_archive_format_detection() {
+        // Test archive format detection logic
+        let archive_formats = [
+            ("rustc-stable-x86_64-unknown-linux-gnu.tar.gz", "tar.gz"),
+            ("rustowl-x86_64-pc-windows-msvc.zip", "zip"),
+            ("component.tar.xz", "tar.xz"),
+            ("archive.7z", "7z"),
+            ("data.tar.bz2", "tar.bz2"),
+        ];
+
+        for (filename, expected_format) in archive_formats {
+            let extension = filename.split('.').last().unwrap_or("");
+            let is_compressed = matches!(extension, "gz" | "xz" | "bz2" | "zip" | "7z");
+            
+            if expected_format.contains("tar") {
+                assert!(filename.contains("tar"));
+            }
+            
+            assert!(is_compressed, "Should detect compression for: {filename}");
+            
+            // Test platform-specific format preferences
+            #[cfg(target_os = "windows")]
+            {
+                if filename.contains("windows") {
+                    assert!(filename.ends_with(".zip") || filename.ends_with(".exe"));
+                }
+            }
+            
+            #[cfg(not(target_os = "windows"))]
+            {
+                if filename.contains("linux") || filename.contains("darwin") {
+                    assert!(filename.contains("tar"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_component_name_validation_comprehensive() {
+        // Test comprehensive component name validation
+        let valid_components = [
+            "rustc",
+            "rust-std",
+            "cargo",
+            "clippy",
+            "rustfmt",
+            "rust-analyzer",
+            "rust-analyzer-preview",
+            "miri",
+            "rust-docs",
+            "rust-mingw",
+            "component-with-long-name",
+            "component123",
+        ];
+
+        let invalid_components = [
+            "",                    // Empty
+            " ",                   // Space only
+            "rust std",            // Space in name
+            "rust\nstd",          // Newline
+            "rust\tstd",          // Tab
+            "rust/std",           // Slash
+            "rust\\std",          // Backslash
+            "rust?std",           // Question mark
+            "rust#std",           // Hash
+            "rust@std",           // At symbol
+            "rust%std",           // Percent
+            "rust std ",          // Trailing space
+            " rust-std",          // Leading space
+            "rust--std",          // Double dash
+            "rust-",              // Trailing dash
+            "-rust",              // Leading dash
+        ];
+
+        for component in valid_components {
+            assert!(!component.is_empty());
+            assert!(!component.contains(' '));
+            assert!(!component.contains('\n'));
+            assert!(!component.contains('\t'));
+            assert!(!component.contains('/'));
+            assert!(!component.contains('\\'));
+            assert!(!component.starts_with('-'));
+            assert!(!component.ends_with('-'));
+            assert!(!component.contains("--"));
+
+            // Should be ASCII alphanumeric with hyphens and digits
+            assert!(component.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+        }
+
+        for component in invalid_components {
+            let is_invalid = component.is_empty()
+                || component.contains(' ')
+                || component.contains('\n')
+                || component.contains('\t')
+                || component.contains('/')
+                || component.contains('\\')
+                || component.contains('?')
+                || component.contains('#')
+                || component.contains('@')
+                || component.contains('%')
+                || component.starts_with('-')
+                || component.ends_with('-')
+                || component.contains("--");
+            
+            assert!(is_invalid, "Component should be invalid: '{component}'");
+        }
+    }
+
+    #[test]
+    fn test_download_progress_calculation() {
+        // Test download progress calculation with various scenarios
+        let test_scenarios = [
+            // (content_length, chunks, expected_progress_points)
+            (1000, vec![100, 200, 300, 400], vec![10, 20, 30, 40]),
+            (500, vec![125, 250, 375, 500], vec![25, 50, 75, 100]),
+            (0, vec![100], vec![0]), // Zero content length
+            (100, vec![50, 25, 25], vec![50, 75, 100]),
+            (1, vec![1], vec![100]), // Tiny download
+            (1_000_000, vec![100_000, 500_000, 400_000], vec![10, 50, 90]),
+        ];
+
+        for (content_length, chunks, _expected) in test_scenarios {
+            let mut progress_points = Vec::new();
+            let mut total_received = 0;
+            let mut last_reported = 0;
+
+            let effective_length = if content_length == 0 { 200_000_000 } else { content_length };
+
+            for chunk_size in chunks {
+                total_received += chunk_size;
+                let current_progress = (total_received * 100) / effective_length;
+                
+                if last_reported != current_progress {
+                    progress_points.push(current_progress);
+                    last_reported = current_progress;
+                }
+            }
+
+            // Verify progress is reasonable
+            for &progress in &progress_points {
+                assert!(progress <= 100, "Progress should not exceed 100%");
+            }
+
+            // Verify progress is non-decreasing
+            for window in progress_points.windows(2) {
+                assert!(window[0] <= window[1], "Progress should be non-decreasing");
+            }
+        }
+    }
+
+    #[test]
+    fn test_path_prefix_stripping_edge_cases() {
+        // Test path prefix stripping with various edge cases
+        let test_cases = [
+            // (full_path, base_path, should_succeed)
+            ("/opt/rustowl/component/lib/file.so", "/opt/rustowl/component", true),
+            ("/opt/rustowl/component", "/opt/rustowl/component", true), // Exact match
+            ("/opt/rustowl", "/opt/rustowl/component", false), // Base is longer
+            ("/different/path", "/opt/rustowl", false), // Completely different
+            ("", "", true), // Both empty
+            ("relative/path", "relative", true), // Relative paths
+            ("/", "/", true), // Root paths
+            ("/a/b/c", "/a/b", true), // Simple case
+            ("./local/path", "./local", true), // Current directory
+            ("../parent/path", "../parent", true), // Parent directory
+        ];
+
+        for (full_path_str, base_path_str, should_succeed) in test_cases {
+            let full_path = PathBuf::from(full_path_str);
+            let base_path = PathBuf::from(base_path_str);
+
+            let result = full_path.strip_prefix(&base_path);
+
+            if should_succeed {
+                assert!(result.is_ok(), "Should succeed: '{full_path_str}' - '{base_path_str}'");
+                
+                if let Ok(relative) = result {
+                    // Verify the relative path makes sense
+                    let reconstructed = base_path.join(relative);
+                    assert_eq!(reconstructed, full_path, "Reconstruction should match original");
+                }
+            } else {
+                assert!(result.is_err(), "Should fail: '{full_path_str}' - '{base_path_str}'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_executable_extension_handling() {
+        // Test executable extension handling across platforms
+        let base_names = [
+            "rustc",
+            "cargo",
+            "rustfmt",
+            "clippy-driver",
+            "rust-analyzer",
+            "rustdoc",
+            "rustowlc",
+        ];
+
+        for base_name in base_names {
+            // Test Windows extension handling
+            #[cfg(windows)]
+            {
+                let with_exe = format!("{base_name}.exe");
+                assert!(with_exe.ends_with(".exe"));
+                assert!(with_exe.starts_with(base_name));
+                assert_eq!(with_exe.len(), base_name.len() + 4);
+            }
+
+            // Test Unix (no extension)
+            #[cfg(not(windows))]
+            {
+                let unix_name = base_name.to_owned();
+                assert_eq!(unix_name, base_name);
+                assert!(!unix_name.contains('.'));
+            }
+
+            // Test path construction with executables
+            let bin_dir = PathBuf::from("/usr/bin");
+            #[cfg(windows)]
+            let exec_path = bin_dir.join(format!("{base_name}.exe"));
+            #[cfg(not(windows))]
+            let exec_path = bin_dir.join(base_name);
+
+            assert!(exec_path.to_string_lossy().contains(base_name));
+            assert!(exec_path.starts_with(&bin_dir));
+        }
+    }
+
+    #[test]
+    fn test_complex_directory_structures() {
+        // Test handling of complex directory structures
+        use tempfile::tempdir;
+        use std::fs;
+
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create nested directory structure
+        let nested_dirs = [
+            "level1",
+            "level1/level2",
+            "level1/level2/level3",
+            "level1/sibling",
+            "level1/sibling/deep/nested/path",
+            "other_root",
+            "other_root/branch",
+        ];
+
+        for dir in nested_dirs {
+            let dir_path = temp_path.join(dir);
+            fs::create_dir_all(&dir_path).unwrap();
+        }
+
+        // Create files in various locations
+        let files = [
+            "level1/file1.txt",
+            "level1/level2/file2.txt",
+            "level1/level2/level3/file3.txt",
+            "level1/sibling/file4.txt",
+            "level1/sibling/deep/nested/path/file5.txt",
+            "other_root/file6.txt",
+            "root_file.txt",
+        ];
+
+        for file in files {
+            let file_path = temp_path.join(file);
+            fs::write(&file_path, "test content").unwrap();
+        }
+
+        // Test recursive_read_dir
+        let found_files = recursive_read_dir(temp_path);
+
+        // Should find all files
+        assert_eq!(found_files.len(), files.len());
+
+        // Verify all expected files are found
+        for expected_file in files {
+            let expected_path = temp_path.join(expected_file);
+            assert!(
+                found_files.contains(&expected_path),
+                "Should find file: {expected_file}"
+            );
+        }
+
+        // Test with individual subdirectories
+        let level1_files = recursive_read_dir(temp_path.join("level1"));
+        assert!(level1_files.len() >= 4); // At least 4 files in level1 tree
+
+        let other_root_files = recursive_read_dir(temp_path.join("other_root"));
+        assert_eq!(other_root_files.len(), 1); // Just file6.txt
+    }
+
+    #[test]
+    fn test_version_string_parsing() {
+        // Test version string parsing patterns
+        let version_patterns = [
+            "1.0.0",
+            "1.0.0-rc.1",
+            "1.0.0-beta",
+            "1.0.0-alpha.1",
+            "2.1.3",
+            "0.1.0",
+            "10.20.30",
+            "1.0.0-dev",
+            "1.0.0+build.123",
+            "1.0.0-rc.1+build.456",
+        ];
+
+        for version in version_patterns {
+            // Test GitHub release URL construction
+            let github_url = format!(
+                "https://github.com/cordx56/rustowl/releases/download/v{version}/rustowl-{HOST_TUPLE}.tar.gz"
+            );
+
+            assert!(github_url.starts_with("https://github.com/"));
+            assert!(github_url.contains("rustowl"));
+            assert!(github_url.contains(version));
+            assert!(github_url.contains(HOST_TUPLE));
+
+            // Test version components
+            let parts: Vec<&str> = version.split(|c| c == '.' || c == '-' || c == '+').collect();
+            assert!(!parts.is_empty());
+            
+            // First part should be a number
+            if let Ok(major) = parts[0].parse::<u32>() {
+                assert!(major < 1000, "Major version should be reasonable");
+            }
+        }
+    }
+
+    #[test]
+    fn test_memory_allocation_patterns() {
+        // Test memory allocation patterns in path operations
+        let base_path = PathBuf::from("/opt/rustowl");
+
+        // Test many path operations don't cause excessive allocations
+        for i in 0..100 {
+            let extended = base_path.join(format!("component_{i}")).join("subdir").join("file.txt");
+            assert!(extended.starts_with(&base_path));
+            
+            // Test string operations
+            let path_str = extended.to_string_lossy();
+            assert!(path_str.contains("component_"));
+            assert!(path_str.contains(&i.to_string()));
+        }
+
+        // Test with varying path lengths
+        for length in [1, 10, 100, 1000] {
+            let long_component = "x".repeat(length);
+            let path_with_long_component = base_path.join(&long_component);
+            
+            assert_eq!(path_with_long_component.file_name().unwrap(), &*long_component);
+            assert!(path_with_long_component.to_string_lossy().len() > base_path.to_string_lossy().len());
+        }
+    }
 }

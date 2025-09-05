@@ -1240,4 +1240,368 @@ mod tests {
         assert!(map.contains_key(&42));
         assert!(!map.contains_key(&43));
     }
+
+    #[test]
+    fn test_complex_mir_terminator_combinations() {
+        // Test complex MirTerminator combinations
+        let range = Range::new(Loc(0), Loc(10)).unwrap();
+        let fn_local = FnLocal::new(0, 5);
+
+        let terminators = vec![
+            MirTerminator::Drop {
+                local: fn_local,
+                range,
+            },
+            MirTerminator::Call {
+                destination_local: fn_local,
+                fn_span: range,
+            },
+            MirTerminator::Other { range },
+        ];
+
+        // Test serialization roundtrip for all terminator types
+        for terminator in terminators {
+            let json = serde_json::to_string(&terminator).unwrap();
+            let deserialized: MirTerminator = serde_json::from_str(&json).unwrap();
+
+            // Verify range is preserved
+            let original_range = match &terminator {
+                MirTerminator::Drop { range, .. } => range,
+                MirTerminator::Call { fn_span, .. } => fn_span,
+                MirTerminator::Other { range } => range,
+            };
+
+            let deserialized_range = match &deserialized {
+                MirTerminator::Drop { range, .. } => range,
+                MirTerminator::Call { fn_span, .. } => fn_span,
+                MirTerminator::Other { range } => range,
+            };
+
+            assert_eq!(original_range, deserialized_range);
+        }
+    }
+
+    #[test]
+    fn test_workspace_hierarchical_structure_stress() {
+        // Test stress testing of hierarchical workspace structures
+        let mut workspace_map = FoldIndexMap::default();
+
+        // Create a complex workspace with many crates
+        for crate_idx in 0..20 {
+            let crate_name = format!("complex_crate_{crate_idx}");
+            let mut crate_files = FoldIndexMap::default();
+
+            // Each crate has many files
+            for file_idx in 0..15 {
+                let file_name = if file_idx == 0 {
+                    "lib.rs".to_string()
+                } else if file_idx == 1 {
+                    "main.rs".to_string()
+                } else {
+                    format!("module_{file_idx}.rs")
+                };
+
+                let mut functions = smallvec::SmallVec::new();
+
+                // Each file has many functions
+                for fn_idx in 0..10 {
+                    let fn_id = (crate_idx * 1000 + file_idx * 100 + fn_idx) as u32;
+                    functions.push(Function::new(fn_id));
+                }
+
+                crate_files.insert(file_name, File { items: functions });
+            }
+
+            workspace_map.insert(crate_name, Crate(crate_files));
+        }
+
+        let workspace = Workspace(workspace_map);
+
+        // Validate the entire structure
+        assert_eq!(workspace.0.len(), 20);
+
+        for crate_idx in 0..20 {
+            let crate_name = format!("complex_crate_{crate_idx}");
+            let crate_ref = workspace.0.get(&crate_name).unwrap();
+            assert_eq!(crate_ref.0.len(), 15);
+
+            for file_idx in 0..15 {
+                let file_name = if file_idx == 0 {
+                    "lib.rs".to_string()
+                } else if file_idx == 1 {
+                    "main.rs".to_string()
+                } else {
+                    format!("module_{file_idx}.rs")
+                };
+
+                let file_ref = crate_ref.0.get(&file_name).unwrap();
+                assert_eq!(file_ref.items.len(), 10);
+
+                for fn_idx in 0..10 {
+                    let expected_fn_id = (crate_idx * 1000 + file_idx * 100 + fn_idx) as u32;
+                    assert_eq!(file_ref.items[fn_idx].fn_id, expected_fn_id);
+                }
+            }
+        }
+
+        // Test serialization of large structure
+        let json_result = serde_json::to_string(&workspace);
+        assert!(json_result.is_ok());
+
+        let json_string = json_result.unwrap();
+        assert!(json_string.len() > 10000); // Should be substantial
+
+        // Test deserialization
+        let deserialized: Result<Workspace, _> = serde_json::from_str(&json_string);
+        assert!(deserialized.is_ok());
+    }
+
+    #[test]
+    fn test_range_arithmetic_comprehensive() {
+        // Test comprehensive range arithmetic operations
+        let test_ranges = vec![
+            Range::new(Loc(0), Loc(10)).unwrap(),
+            Range::new(Loc(5), Loc(15)).unwrap(),
+            Range::new(Loc(20), Loc(30)).unwrap(),
+            Range::new(Loc(25), Loc(35)).unwrap(),
+            Range::new(Loc(100), Loc(200)).unwrap(),
+            Range::new(Loc(u32::MAX - 100), Loc(u32::MAX)).unwrap(),
+        ];
+
+        // Test range comparison operations
+        for i in 0..test_ranges.len() {
+            for j in i + 1..test_ranges.len() {
+                let range1 = test_ranges[i];
+                let range2 = test_ranges[j];
+
+                // Test ordering consistency
+                let comparison = range1.from().cmp(&range2.from());
+                match comparison {
+                    std::cmp::Ordering::Less => {
+                        assert!(range1.from() < range2.from());
+                    }
+                    std::cmp::Ordering::Greater => {
+                        assert!(range1.from() > range2.from());
+                    }
+                    std::cmp::Ordering::Equal => {
+                        assert_eq!(range1.from(), range2.from());
+                    }
+                }
+
+                // Test size calculations
+                let size1 = range1.until().0 - range1.from().0;
+                let size2 = range2.until().0 - range2.from().0;
+                assert!(size1 > 0);
+                assert!(size2 > 0);
+
+                // Test non-overlapping checks
+                let no_overlap = range1.until() <= range2.from() || range2.until() <= range1.from();
+                if no_overlap {
+                    // Ranges don't overlap, verify this
+                    assert!(range1.until() <= range2.from() || range2.until() <= range1.from());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_fn_local_edge_cases() {
+        // Test FnLocal with various edge cases
+        let edge_cases = vec![
+            (0, 0),           // Minimum values
+            (u32::MAX, 0),    // Maximum local ID
+            (0, u32::MAX),    // Maximum function ID
+            (u32::MAX, u32::MAX), // Both maximum
+            (12345, 67890),   // Arbitrary values
+            (1, 0),           // Local 1, function 0 (common case)
+        ];
+
+        for (local_id, fn_id) in edge_cases {
+            let fn_local = FnLocal::new(local_id, fn_id);
+            
+            assert_eq!(fn_local.id, local_id);
+            assert_eq!(fn_local.fn_id, fn_id);
+
+            // Test serialization
+            let json = serde_json::to_string(&fn_local).unwrap();
+            let deserialized: FnLocal = serde_json::from_str(&json).unwrap();
+            
+            assert_eq!(fn_local.id, deserialized.id);
+            assert_eq!(fn_local.fn_id, deserialized.fn_id);
+
+            // Test display if implemented
+            let _debug_str = format!("{fn_local:?}");
+        }
+    }
+
+    #[test]
+    fn test_mir_variable_comprehensive_scenarios() {
+        // Test comprehensive MirVariable scenarios
+        let base_range = Range::new(Loc(10), Loc(50)).unwrap();
+        let live_range = Range::new(Loc(15), Loc(40)).unwrap();
+        let dead_range = Range::new(Loc(40), Loc(45)).unwrap();
+
+        let variables = vec![
+            MirVariable::User {
+                index: 0,
+                live: live_range,
+                dead: dead_range,
+            },
+            MirVariable::User {
+                index: u32::MAX,
+                live: base_range,
+                dead: Range::new(Loc(50), Loc(60)).unwrap(),
+            },
+            MirVariable::Other {
+                index: 0,
+                live: live_range,
+                dead: dead_range,
+            },
+            MirVariable::Other {
+                index: 12345,
+                live: base_range,
+                dead: live_range,
+            },
+            MirVariable::Other {
+                index: 999,
+                live: Range::new(Loc(0), Loc(10)).unwrap(),
+                dead: Range::new(Loc(10), Loc(20)).unwrap(),
+            },
+        ];
+
+        for variable in variables {
+            // Test serialization roundtrip
+            let json = serde_json::to_string(&variable).unwrap();
+            let deserialized: MirVariable = serde_json::from_str(&json).unwrap();
+
+            // Extract and compare components
+            let (orig_index, orig_live, orig_dead) = match &variable {
+                MirVariable::User { index, live, dead } => (index, live, dead),
+                MirVariable::Other { index, live, dead } => (index, live, dead),
+            };
+
+            let (deser_index, deser_live, deser_dead) = match &deserialized {
+                MirVariable::User { index, live, dead } => (index, live, dead),
+                MirVariable::Other { index, live, dead } => (index, live, dead),
+            };
+
+            assert_eq!(orig_index, deser_index);
+            assert_eq!(orig_live, deser_live);
+            assert_eq!(orig_dead, deser_dead);
+
+            // Verify ranges are valid
+            assert!(orig_live.from() < orig_live.until());
+            assert!(orig_dead.from() < orig_dead.until());
+        }
+    }
+
+    #[test]
+    fn test_collection_performance_characteristics() {
+        // Test performance characteristics of collections
+        use std::time::Instant;
+
+        // Test SmallVec performance
+        let start = Instant::now();
+        let mut functions = smallvec::SmallVec::<[Function; 4]>::new();
+        
+        for i in 0..1000 {
+            functions.push(Function::new(i));
+        }
+
+        let smallvec_duration = start.elapsed();
+        assert!(smallvec_duration.as_millis() < 100, "SmallVec operations should be fast");
+        assert_eq!(functions.len(), 1000);
+
+        // Test FoldIndexMap performance
+        let start = Instant::now();
+        let mut map: FoldIndexMap<u32, String> = FoldIndexMap::default();
+        
+        for i in 0..1000 {
+            map.insert(i, format!("value_{i}"));
+        }
+
+        let map_duration = start.elapsed();
+        assert!(map_duration.as_millis() < 100, "FoldIndexMap operations should be fast");
+        assert_eq!(map.len(), 1000);
+
+        // Test lookups
+        let start = Instant::now();
+        for i in 0..1000 {
+            assert!(map.contains_key(&i));
+        }
+        let lookup_duration = start.elapsed();
+        assert!(lookup_duration.as_millis() < 50, "Lookups should be very fast");
+    }
+
+    #[test]
+    fn test_serialization_format_consistency() {
+        // Test that serialization format is consistent and predictable
+        let function = Function::new(42);
+        let range = Range::new(Loc(10), Loc(20)).unwrap();
+        let fn_local = FnLocal::new(1, 2);
+
+        let variable = MirVariable::User {
+            index: 5,
+            live: range,
+            dead: Range::new(Loc(20), Loc(30)).unwrap(),
+        };
+
+        let statement = MirStatement::Assign {
+            target_local: fn_local,
+            range,
+            rval: None,
+        };
+
+        let terminator = MirTerminator::Other { range };
+
+        // Test multiple serialization rounds produce same result
+        for _ in 0..3 {
+            let json1 = serde_json::to_string(&function).unwrap();
+            let json2 = serde_json::to_string(&function).unwrap();
+            assert_eq!(json1, json2, "Serialization should be deterministic");
+
+            let json1 = serde_json::to_string(&variable).unwrap();
+            let json2 = serde_json::to_string(&variable).unwrap();
+            assert_eq!(json1, json2, "Variable serialization should be deterministic");
+
+            let json1 = serde_json::to_string(&statement).unwrap();
+            let json2 = serde_json::to_string(&statement).unwrap();
+            assert_eq!(json1, json2, "Statement serialization should be deterministic");
+
+            let json1 = serde_json::to_string(&terminator).unwrap();
+            let json2 = serde_json::to_string(&terminator).unwrap();
+            assert_eq!(json1, json2, "Terminator serialization should be deterministic");
+        }
+    }
+
+    #[test]
+    fn test_memory_usage_optimization() {
+        // Test memory usage optimization for data structures
+        use std::mem;
+
+        // Test that core types have reasonable memory footprint
+        let function = Function::new(0);
+        let function_size = mem::size_of_val(&function);
+        assert!(function_size <= 64, "Function should be compact: {function_size} bytes");
+
+        let range = Range::new(Loc(0), Loc(100)).unwrap();
+        let range_size = mem::size_of_val(&range);
+        assert!(range_size <= 16, "Range should be compact: {range_size} bytes");
+
+        let fn_local = FnLocal::new(0, 0);
+        let fn_local_size = mem::size_of_val(&fn_local);
+        assert!(fn_local_size <= 16, "FnLocal should be compact: {fn_local_size} bytes");
+
+        // Test SmallVec doesn't allocate for small sizes
+        let small_vec = smallvec::SmallVec::<[Function; 4]>::new();
+        let small_vec_size = mem::size_of_val(&small_vec);
+        assert!(small_vec_size > 0);
+
+        // Add items within inline capacity
+        let mut small_vec = smallvec::SmallVec::<[Function; 4]>::new();
+        for i in 0..4 {
+            small_vec.push(Function::new(i));
+        }
+        assert!(!small_vec.spilled(), "Should not spill for small collections");
+    }
 }

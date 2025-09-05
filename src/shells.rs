@@ -478,4 +478,321 @@ mod tests {
         // Test case sensitivity in file stem extraction
         assert_eq!(Shell::from_shell_path("/usr/bin/BASH"), None); // Case matters for file stem
     }
+
+    #[test]
+    fn test_shell_unicode_path_handling() {
+        // Test shell detection with Unicode paths
+        let unicode_paths = vec![
+            ("/usr/bin/测试/bash", Some(Shell::Bash)),
+            ("/home/用户/bin/zsh", Some(Shell::Zsh)),
+            ("/opt/русский/fish", Some(Shell::Fish)),
+            ("/Applications/العربية/nu", Some(Shell::Nushell)),
+            ("/usr/local/bin/日本語/elvish", Some(Shell::Elvish)),
+            ("~/🦀/powershell", Some(Shell::PowerShell)),
+            ("/path/with spaces/bash", Some(Shell::Bash)),
+            ("/path\twith\ttabs/zsh", Some(Shell::Zsh)),
+        ];
+
+        for (path, expected) in unicode_paths {
+            let result = Shell::from_shell_path(path);
+            assert_eq!(result, expected, "Failed for Unicode path: {path}");
+        }
+    }
+
+    #[test]
+    fn test_shell_generator_stress_testing() {
+        // Stress test the Generator interface with various commands
+        use clap::{Arg, Command};
+
+        let complex_command = Command::new("complex-app")
+            .bin_name("complex-app")
+            .about("A complex application for testing")
+            .arg(Arg::new("input")
+                .short('i')
+                .long("input")
+                .help("Input file"))
+            .arg(Arg::new("output")
+                .short('o')
+                .long("output")
+                .help("Output file"))
+            .arg(Arg::new("verbose")
+                .short('v')
+                .long("verbose")
+                .action(clap::ArgAction::Count)
+                .help("Verbose output"))
+            .subcommand(Command::new("subcommand1")
+                .about("First subcommand")
+                .arg(Arg::new("sub-arg").help("Subcommand argument")))
+            .subcommand(Command::new("subcommand2")
+                .about("Second subcommand"));
+
+        let shells = [
+            Shell::Bash,
+            Shell::Zsh,
+            Shell::Fish,
+            Shell::PowerShell,
+            Shell::Elvish,
+            Shell::Nushell,
+        ];
+
+        for shell in shells {
+            let mut buf = Vec::new();
+            shell.generate(&complex_command, &mut buf);
+
+            // Should produce substantial output for complex commands
+            assert!(buf.len() > 100, "Shell {shell:?} should produce substantial completion");
+
+            let content = String::from_utf8_lossy(&buf);
+            assert!(content.contains("complex-app"), "Should contain app name");
+
+            // Test that file names are appropriate
+            let filename = shell.file_name("complex-app");
+            assert!(!filename.is_empty());
+            assert!(filename.contains("complex-app"));
+        }
+    }
+
+    #[test]
+    fn test_shell_env_detection_comprehensive() {
+        // Test comprehensive environment detection patterns
+        use std::path::Path;
+
+        let shell_env_patterns = vec![
+            ("/bin/bash", Some(Shell::Bash)),
+            ("/usr/bin/zsh", Some(Shell::Zsh)),
+            ("/usr/local/bin/fish", Some(Shell::Fish)),
+            ("/opt/homebrew/bin/elvish", Some(Shell::Elvish)),
+            ("/usr/bin/pwsh", None), // pwsh not directly supported
+            ("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", Some(Shell::PowerShell)),
+            ("/snap/bin/nu", Some(Shell::Nushell)),
+            ("/usr/local/bin/nushell", Some(Shell::Nushell)),
+            ("/bin/sh", None), // sh not supported
+            ("/bin/tcsh", None), // tcsh not supported
+            ("/bin/csh", None), // csh not supported
+            ("/usr/bin/ksh", None), // ksh not supported
+        ];
+
+        for (shell_path, expected) in shell_env_patterns {
+            let path = Path::new(shell_path);
+            let detected = Shell::from_shell_path(path);
+            assert_eq!(detected, expected, "Failed for shell path: {shell_path}");
+
+            // Test that the path operations work correctly
+            if let Some(file_stem) = path.file_stem() {
+                let stem_str = file_stem.to_string_lossy();
+                
+                // Verify our detection logic matches expectations
+                let manual_detection = match stem_str.as_ref() {
+                    "bash" => Some(Shell::Bash),
+                    "zsh" => Some(Shell::Zsh),
+                    "fish" => Some(Shell::Fish),
+                    "elvish" => Some(Shell::Elvish),
+                    "powershell" | "powershell_ise" => Some(Shell::PowerShell),
+                    "nu" | "nushell" => Some(Shell::Nushell),
+                    _ => None,
+                };
+                
+                assert_eq!(detected, manual_detection, "Detection mismatch for: {stem_str}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_shell_variant_exhaustive_coverage() {
+        // Test all shell variants comprehensively
+        use clap::ValueEnum;
+
+        let all_variants = Shell::value_variants();
+        assert_eq!(all_variants.len(), 6);
+
+        for &variant in all_variants {
+            // Test Display trait
+            let display_str = variant.to_string();
+            assert!(!display_str.is_empty());
+            assert!(!display_str.contains(' '));
+            assert!(display_str.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_alphabetic()));
+
+            // Test FromStr roundtrip
+            let parsed = <Shell as std::str::FromStr>::from_str(&display_str).unwrap();
+            assert_eq!(variant, parsed);
+
+            // Test Debug trait
+            let debug_str = format!("{variant:?}");
+            assert!(!debug_str.is_empty());
+
+            // Test Clone trait
+            let cloned = variant;
+            assert_eq!(variant, cloned);
+
+            // Test Copy trait (implicit with Clone for Copy types)
+            let copied = variant;
+            assert_eq!(variant, copied);
+
+            // Test Hash trait
+            use std::collections::HashMap;
+            let mut map = HashMap::new();
+            map.insert(variant, format!("value for {variant:?}"));
+            assert!(map.contains_key(&variant));
+
+            // Test PartialEq
+            assert_eq!(variant, variant);
+            
+            // Test Eq (implicit)
+            assert!(variant == variant);
+
+            // Test generator methods
+            let filename = variant.file_name("test");
+            assert!(!filename.is_empty());
+
+            // Test standard shell conversion
+            let standard = variant.to_standard_shell();
+            match variant {
+                Shell::Nushell => assert!(standard.is_none()),
+                _ => assert!(standard.is_some()),
+            }
+        }
+    }
+
+    #[test]
+    fn test_shell_error_message_patterns() {
+        // Test error message patterns comprehensively
+
+        let invalid_inputs = vec![
+            ("", "invalid variant: "),
+            ("invalid", "invalid variant: invalid"),
+            ("cmd", "invalid variant: cmd"),
+            ("shell", "invalid variant: shell"),
+            ("bash zsh", "invalid variant: bash zsh"),
+            ("INVALID", "invalid variant: INVALID"),
+            ("123", "invalid variant: 123"),
+            ("bash-invalid", "invalid variant: bash-invalid"),
+            ("zsh_modified", "invalid variant: zsh_modified"),
+            ("fish!", "invalid variant: fish!"),
+            ("powershell.exe", "invalid variant: powershell.exe"),
+            ("nushell-beta", "invalid variant: nushell-beta"),
+            ("  bash  ", "invalid variant:   bash  "), // Whitespace preserved
+            ("BASH", "invalid variant: BASH"), // Case sensitive
+        ];
+
+        for (input, expected_error) in invalid_inputs {
+            let result = <Shell as std::str::FromStr>::from_str(input);
+            assert!(result.is_err(), "Should be error for input: '{input}'");
+            
+            let error_msg = result.unwrap_err();
+            assert_eq!(error_msg, expected_error, "Error message mismatch for: '{input}'");
+        }
+    }
+
+    #[test]
+    fn test_shell_completion_output_validation() {
+        // Test completion output validation for different shells
+        use clap::Command;
+
+        let test_command = Command::new("rustowl")
+            .bin_name("rustowl")
+            .about("Rust Ownership and Lifetime Visualizer");
+
+        let shells_with_expected_patterns = vec![
+            (Shell::Bash, vec!["complete", "rustowl"]),
+            (Shell::Zsh, vec!["compdef", "_rustowl", "rustowl"]),
+            (Shell::Fish, vec!["complete", "rustowl"]),
+            (Shell::PowerShell, vec!["Register-ArgumentCompleter", "rustowl"]),
+            (Shell::Elvish, vec!["edit:completion:arg-completer", "rustowl"]),
+            (Shell::Nushell, vec!["export extern", "rustowl"]),
+        ];
+
+        for (shell, expected_patterns) in shells_with_expected_patterns {
+            let mut buf = Vec::new();
+            shell.generate(&test_command, &mut buf);
+
+            let content = String::from_utf8_lossy(&buf);
+            assert!(!content.is_empty(), "Shell {shell:?} should produce output");
+
+            for pattern in expected_patterns {
+                assert!(
+                    content.contains(pattern),
+                    "Shell {shell:?} output should contain '{pattern}'. Content: {content}"
+                );
+            }
+
+            // Test that output is valid (no obvious syntax errors)
+            assert!(!content.contains("ERROR"));
+            assert!(!content.contains("PANIC"));
+        }
+    }
+
+    #[test]
+    fn test_shell_path_corner_cases() {
+        // Test corner cases in path handling
+        let corner_cases = vec![
+            // (path, expected_result, description)
+            ("bash", Some(Shell::Bash), "simple name"),
+            ("./bash", Some(Shell::Bash), "relative current dir"),
+            ("../bash", Some(Shell::Bash), "relative parent dir"),
+            ("./bin/../bash", Some(Shell::Bash), "complex relative"),
+            ("/usr/bin/bash", Some(Shell::Bash), "absolute path"),
+            ("~/.local/bin/zsh", Some(Shell::Zsh), "home relative"),
+            ("/opt/local/bin/fish", Some(Shell::Fish), "opt path"),
+            ("C:\\Program Files\\PowerShell\\7\\pwsh.exe", None, "pwsh not supported"),
+            ("/usr/bin/bash-5.1", None, "version suffix"),
+            ("/usr/bin/bash.old", None, "backup suffix"),
+            ("powershell_ise.exe", Some(Shell::PowerShell), "ISE variant"),
+            ("nu-0.80", None, "version not supported"),
+            ("/dev/null", None, "device file"),
+            (".", None, "current directory"),
+            ("..", None, "parent directory"),
+            ("...", None, "invalid path"),
+            ("con", None, "windows reserved"),
+            ("prn", None, "windows reserved"),
+        ];
+
+        for (path, expected, description) in corner_cases {
+            let result = Shell::from_shell_path(path);
+            assert_eq!(
+                result, expected,
+                "Failed for {description}: path='{path}', expected={expected:?}, got={result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_shell_performance_characteristics() {
+        // Test performance characteristics of shell operations
+        use std::time::Instant;
+
+        // Test that operations complete reasonably quickly
+        let shells = Shell::value_variants();
+
+        for &shell in shells {
+            let start = Instant::now();
+
+            // Perform multiple operations
+            for i in 0..1000 {
+                let _display = shell.to_string();
+                let _filename = shell.file_name(&format!("app_{i}"));
+                let _standard = shell.to_standard_shell();
+            }
+
+            let duration = start.elapsed();
+            assert!(
+                duration.as_millis() < 100,
+                "Shell {shell:?} operations should be fast, took {duration:?}"
+            );
+        }
+
+        // Test parsing performance
+        let valid_shells = ["bash", "zsh", "fish", "powershell", "elvish", "nushell"];
+        
+        let start = Instant::now();
+        for _ in 0..1000 {
+            for shell_name in &valid_shells {
+                let _parsed = <Shell as std::str::FromStr>::from_str(shell_name).unwrap();
+            }
+        }
+        let parse_duration = start.elapsed();
+        assert!(
+            parse_duration.as_millis() < 50,
+            "Shell parsing should be fast, took {parse_duration:?}"
+        );
+    }
 }
