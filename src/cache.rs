@@ -103,6 +103,13 @@ pub fn get_cache_config() -> CacheConfig {
     config
 }
 
+#[cfg(test)]
+use std::sync::LazyLock;
+
+#[cfg(test)]
+static ENV_LOCK: LazyLock<std::sync::Mutex<()>> = LazyLock::new(|| std::sync::Mutex::new(()));
+
+
 /// Temporarily sets an environment variable for the duration of a closure, restoring the previous state afterwards.
 ///
 /// The function saves the current value of `key` (if any), sets `key` to `value`, runs `f()`, and then restores `key` to its original value:
@@ -128,6 +135,7 @@ fn with_env<F>(key: &str, value: &str, f: F)
 where
     F: FnOnce(),
 {
+    let _guard = ENV_LOCK.lock().unwrap();
     let old_value = env::var(key).ok();
     unsafe {
         env::set_var(key, value);
