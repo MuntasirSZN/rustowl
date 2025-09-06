@@ -598,14 +598,14 @@ mod tests {
         let with_context = parse_int_result.context("failed to parse integer");
         assert!(with_context.is_err());
 
-        // Test with ParseFloatError  
+        // Test with ParseFloatError
         let parse_float_result: std::result::Result<f64, ParseFloatError> = "not_a_float".parse();
         let with_context = parse_float_result.context("failed to parse float");
         assert!(with_context.is_err());
 
         // Test with UTF8 error simulation
-        let invalid_utf8 = &[0xFF, 0xFE, 0xFD];
-        let utf8_result = std::str::from_utf8(invalid_utf8);
+        let invalid_utf8 = vec![0xC0];
+        let utf8_result = std::str::from_utf8(&invalid_utf8);
         let with_context = utf8_result.context("invalid utf8 sequence");
         assert!(with_context.is_err());
     }
@@ -663,7 +663,7 @@ mod tests {
     #[test]
     fn test_error_context_trait_bounds_comprehensive() {
         // Test that ErrorContext works with all expected trait bounds
-        
+
         // Create a custom error that implements the required traits
         #[derive(Debug)]
         struct TestError {
@@ -713,10 +713,14 @@ mod tests {
 
         for variant in variants {
             let size = mem::size_of_val(&variant);
-            
+
             // Error should be reasonably sized
-            assert!(size < 1024, "Error variant {:?} is too large: {} bytes", 
-                   mem::discriminant(&variant), size);
+            assert!(
+                size < 1024,
+                "Error variant {:?} is too large: {} bytes",
+                mem::discriminant(&variant),
+                size
+            );
 
             // Test that errors don't grow significantly with content
             let large_message = "x".repeat(1000);
@@ -731,11 +735,17 @@ mod tests {
             };
 
             let large_size = mem::size_of_val(&large_variant);
-            
+
             // Size of enum variants should be consistent regardless of string content
             // (since strings are heap-allocated)
-            assert_eq!(large_size, size, "Enum size should be consistent for heap-allocated strings");
-            assert!(large_size < 2048, "Even large variants should be reasonable: {} bytes", large_size);
+            assert_eq!(
+                large_size, size,
+                "Enum size should be consistent for heap-allocated strings"
+            );
+            assert!(
+                large_size < 2048,
+                "Even large variants should be reasonable: {large_size} bytes"
+            );
         }
     }
 
@@ -743,18 +753,18 @@ mod tests {
     fn test_error_formatting_edge_cases() {
         // Test error formatting with edge cases
         let edge_case_messages = vec![
-            "",                                    // Empty string
-            " ",                                   // Single space
-            "\n",                                  // Single newline
-            "\t",                                  // Single tab
-            "🦀",                                  // Single emoji
-            "test\0null",                          // Null character
-            "very long message", // Very long message
-            "unicode: 你好世界 🌍 здравствуй мир", // Mixed unicode
+            "",                                       // Empty string
+            " ",                                      // Single space
+            "\n",                                     // Single newline
+            "\t",                                     // Single tab
+            "🦀",                                     // Single emoji
+            "test\0null",                             // Null character
+            "very long message",                      // Very long message
+            "unicode: 你好世界 🌍 здравствуй мир",    // Mixed unicode
             "quotes: \"double\" 'single' `backtick`", // Various quotes
-            "special: !@#$%^&*()_+-=[]{}|;:,.<>?", // Special characters
-            "escaped: \\n \\t \\r \\\\",          // Escaped sequences
-            "\u{200B}\u{FEFF}invisible",           // Zero-width characters
+            "special: !@#$%^&*()_+-=[]{}|;:,.<>?",    // Special characters
+            "escaped: \\n \\t \\r \\\\",              // Escaped sequences
+            "\u{200B}\u{FEFF}invisible",              // Zero-width characters
         ];
 
         for message in edge_case_messages {
@@ -778,8 +788,10 @@ mod tests {
 
                 // Should contain the message (unless empty)
                 if !message.is_empty() {
-                    assert!(display_str.contains(message), 
-                           "Display should contain message for: {:?}", message);
+                    assert!(
+                        display_str.contains(message),
+                        "Display should contain message for: {message:?}"
+                    );
                 }
             }
         }
@@ -795,31 +807,31 @@ mod tests {
         let error = Arc::new(RustOwlError::Cache("shared error".to_string()));
         let barrier = Arc::new(Barrier::new(3));
 
-        let handles: Vec<_> = (0..2).map(|i| {
-            let error_clone = Arc::clone(&error);
-            let barrier_clone = Arc::clone(&barrier);
-            
-            thread::spawn(move || {
-                barrier_clone.wait();
-                
-                // Each thread should be able to access the error
-                let error_str = error_clone.to_string();
-                assert!(error_str.contains("shared error"));
-                
-                // Create new errors in thread
-                let thread_error = RustOwlError::Analysis(format!("thread {i} error"));
-                assert!(thread_error.to_string().contains(&format!("thread {i}")));
-                
-                thread_error
+        let handles: Vec<_> = (0..2)
+            .map(|i| {
+                let error_clone = Arc::clone(&error);
+                let barrier_clone = Arc::clone(&barrier);
+
+                thread::spawn(move || {
+                    barrier_clone.wait();
+
+                    // Each thread should be able to access the error
+                    let error_str = error_clone.to_string();
+                    assert!(error_str.contains("shared error"));
+
+                    // Create new errors in thread
+                    let thread_error = RustOwlError::Analysis(format!("thread {i} error"));
+                    assert!(thread_error.to_string().contains(&format!("thread {i}")));
+
+                    thread_error
+                })
             })
-        }).collect();
+            .collect();
 
         barrier.wait(); // Synchronize all threads
 
         // Collect results
-        let thread_errors: Vec<_> = handles.into_iter()
-            .map(|h| h.join().unwrap())
-            .collect();
+        let thread_errors: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
         assert_eq!(thread_errors.len(), 2);
         for (i, error) in thread_errors.iter().enumerate() {
@@ -830,9 +842,10 @@ mod tests {
     #[test]
     fn test_error_conversion_completeness() {
         // Test comprehensive error conversions
-        
+
         // Test all From implementations
-        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let io_error =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
         let rustowl_from_io: RustOwlError = io_error.into();
         match rustowl_from_io {
             RustOwlError::Io(_) => (),

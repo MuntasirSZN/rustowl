@@ -479,12 +479,14 @@ mod tests {
     #[test]
     fn test_complex_workspace_structures() {
         // Test complex workspace structure creation
-        let mut complex_workspace = HashMap::with_capacity_and_hasher(3, foldhash::quality::RandomState::default());
+        let mut complex_workspace =
+            HashMap::with_capacity_and_hasher(3, foldhash::quality::RandomState::default());
 
         // Create multiple crates with different structures
         for crate_idx in 0..3 {
             let crate_name = format!("crate_{crate_idx}");
-            let mut crate_files = HashMap::with_capacity_and_hasher(5, foldhash::quality::RandomState::default());
+            let mut crate_files =
+                HashMap::with_capacity_and_hasher(5, foldhash::quality::RandomState::default());
 
             for file_idx in 0..5 {
                 let file_name = format!("src/module_{file_idx}.rs");
@@ -532,34 +534,45 @@ mod tests {
     fn test_json_serialization_edge_cases() {
         // Test JSON serialization with edge cases
         let edge_case_functions = vec![
-            Function::new(0),                    // Minimum ID
-            Function::new(u32::MAX),             // Maximum ID
-            Function::new(12345),                // Regular ID
+            Function::new(0),        // Minimum ID
+            Function::new(u32::MAX), // Maximum ID
+            Function::new(12345),    // Regular ID
         ];
 
         for function in edge_case_functions {
             let fn_id = function.fn_id; // Store ID before move
-            let mut file_map = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
-            file_map.insert("test.rs".to_string(), File {
-                items: smallvec::smallvec![function],
-            });
+            let mut file_map =
+                HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+            file_map.insert(
+                "test.rs".to_string(),
+                File {
+                    items: smallvec::smallvec![function],
+                },
+            );
 
             let krate = Crate(file_map);
-            let mut ws_map = HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
+            let mut ws_map =
+                HashMap::with_capacity_and_hasher(1, foldhash::quality::RandomState::default());
             ws_map.insert("test_crate".to_string(), krate);
 
             let workspace = Workspace(ws_map);
 
             // Test serialization
             let json_result = serde_json::to_string(&workspace);
-            assert!(json_result.is_ok(), "Failed to serialize function with ID {}", fn_id);
+            assert!(
+                json_result.is_ok(),
+                "Failed to serialize function with ID {fn_id}"
+            );
 
             let json_string = json_result.unwrap();
             assert!(json_string.contains(&fn_id.to_string()));
 
             // Test deserialization roundtrip
             let deserialized: Result<Workspace, _> = serde_json::from_str(&json_string);
-            assert!(deserialized.is_ok(), "Failed to deserialize function with ID {}", fn_id);
+            assert!(
+                deserialized.is_ok(),
+                "Failed to deserialize function with ID {fn_id}"
+            );
 
             let deserialized_workspace = deserialized.unwrap();
             assert_eq!(deserialized_workspace.0.len(), 1);
@@ -594,10 +607,11 @@ mod tests {
 
         // Test timeout operations
         let timeout_result = runtime.block_on(async {
-            tokio::time::timeout(
-                tokio::time::Duration::from_millis(100),
-                async { tokio::time::sleep(tokio::time::Duration::from_millis(50)).await; 42 }
-            ).await
+            tokio::time::timeout(tokio::time::Duration::from_millis(100), async {
+                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                42
+            })
+            .await
         });
         assert!(timeout_result.is_ok());
         assert_eq!(timeout_result.unwrap(), 42);
@@ -616,7 +630,11 @@ mod tests {
             (vec!["rustowlc", "--print", "cfg"], true, false), // Print flag
             (vec!["rustowlc", "--crate-type", "lib"], false, false), // Normal compilation
             (vec!["rustowlc", "-L", "dependency=/path"], false, false), // Normal compilation
-            (vec!["rustowlc", "rustowlc", "--crate-type", "lib"], false, true), // Wrapper + normal
+            (
+                vec!["rustowlc", "rustowlc", "--crate-type", "lib"],
+                false,
+                true,
+            ), // Wrapper + normal
             (vec!["rustowlc", "rustowlc", "-vV"], true, true), // Wrapper + version (should detect version)
         ];
 
@@ -625,7 +643,10 @@ mod tests {
             let first = args.first();
             let second = args.get(1);
             let should_skip_analysis = first == second;
-            assert_eq!(should_skip_analysis, expected_skip_analysis, "Skip analysis mismatch for: {args:?}");
+            assert_eq!(
+                should_skip_analysis, expected_skip_analysis,
+                "Skip analysis mismatch for: {args:?}"
+            );
 
             // Test version/print flag detection
             let mut should_use_default_rustc = false;
@@ -635,7 +656,10 @@ mod tests {
                     break;
                 }
             }
-            assert_eq!(should_use_default_rustc, expected_default_rustc, "Default rustc mismatch for: {args:?}");
+            assert_eq!(
+                should_use_default_rustc, expected_default_rustc,
+                "Default rustc mismatch for: {args:?}"
+            );
         }
     }
 
@@ -660,18 +684,41 @@ mod tests {
         }
 
         let test_scenarios = vec![
-            MockCacheStats { hits: 100, misses: 20, evictions: 5 },
-            MockCacheStats { hits: 0, misses: 10, evictions: 0 },
-            MockCacheStats { hits: 50, misses: 0, evictions: 2 },
-            MockCacheStats { hits: 0, misses: 0, evictions: 0 },
-            MockCacheStats { hits: 1000, misses: 100, evictions: 50 },
+            MockCacheStats {
+                hits: 100,
+                misses: 20,
+                evictions: 5,
+            },
+            MockCacheStats {
+                hits: 0,
+                misses: 10,
+                evictions: 0,
+            },
+            MockCacheStats {
+                hits: 50,
+                misses: 0,
+                evictions: 2,
+            },
+            MockCacheStats {
+                hits: 0,
+                misses: 0,
+                evictions: 0,
+            },
+            MockCacheStats {
+                hits: 1000,
+                misses: 100,
+                evictions: 50,
+            },
         ];
 
         for stats in test_scenarios {
             let hit_rate = stats.hit_rate();
-            
+
             // Hit rate should be between 0 and 1
-            assert!(hit_rate >= 0.0 && hit_rate <= 1.0, "Invalid hit rate: {hit_rate}");
+            assert!(
+                (0.0..=1.0).contains(&hit_rate),
+                "Invalid hit rate: {hit_rate}"
+            );
 
             // Test logging format (simulate what would be logged)
             let log_message = format!(
@@ -694,18 +741,20 @@ mod tests {
         // Test worker thread calculation with various scenarios
         let test_cases = vec![
             // (available_parallelism, expected_range)
-            (1, 2..=2),   // Single core -> minimum 2
-            (2, 2..=2),   // Dual core -> 1 thread, clamped to 2
-            (4, 2..=2),   // Quad core -> 2 threads
-            (8, 4..=4),   // 8 cores -> 4 threads
-            (16, 8..=8),  // 16 cores -> 8 threads, clamped to max
-            (32, 8..=8),  // 32 cores -> 16 threads, clamped to 8
+            (1, 2..=2),  // Single core -> minimum 2
+            (2, 2..=2),  // Dual core -> 1 thread, clamped to 2
+            (4, 2..=2),  // Quad core -> 2 threads
+            (8, 4..=4),  // 8 cores -> 4 threads
+            (16, 8..=8), // 16 cores -> 8 threads, clamped to max
+            (32, 8..=8), // 32 cores -> 16 threads, clamped to 8
         ];
 
         for (available, expected_range) in test_cases {
             let calculated = (available / 2).clamp(2, 8);
-            assert!(expected_range.contains(&calculated), 
-                   "Worker thread calculation failed for {available} cores: got {calculated}, expected {expected_range:?}");
+            assert!(
+                expected_range.contains(&calculated),
+                "Worker thread calculation failed for {available} cores: got {calculated}, expected {expected_range:?}"
+            );
         }
 
         // Test with the actual calculation logic
@@ -762,7 +811,10 @@ mod tests {
 
             // Memory usage should scale reasonably
             if capacity > 0 {
-                assert!(map.capacity() >= capacity, "HashMap should have at least requested capacity");
+                assert!(
+                    map.capacity() >= capacity,
+                    "HashMap should have at least requested capacity"
+                );
             }
         }
 
@@ -774,9 +826,12 @@ mod tests {
         for i in 0..10 {
             small_vec.push(Function::new(i));
             let current_size = mem::size_of_val(&small_vec);
-            
+
             // Size should remain reasonable (but Function objects are large)
-            assert!(current_size < 100_000, "SmallVec size should remain reasonable: {current_size} bytes");
+            assert!(
+                current_size < 100_000,
+                "SmallVec size should remain reasonable: {current_size} bytes"
+            );
         }
 
         assert!(small_vec.len() == 10);
@@ -796,24 +851,16 @@ mod tests {
 
         // Test MIR optimization level
         let mir_opt_levels = [Some(0), Some(1), Some(2), Some(3), None];
-        for level in mir_opt_levels {
-            match level {
-                Some(l) => assert!(l <= 4, "MIR opt level should be reasonable"),
-                None => (), // No optimization
-            }
+        for l in mir_opt_levels.into_iter().flatten() {
+            assert!(l <= 4, "MIR opt level should be reasonable")
         }
 
         // Test incremental compilation settings
-        let incremental_options: Vec<Option<std::path::PathBuf>> = vec![
-            None,
-            Some(std::path::PathBuf::from("/tmp/incremental")),
-        ];
+        let incremental_options: Vec<Option<std::path::PathBuf>> =
+            vec![None, Some(std::path::PathBuf::from("/tmp/incremental"))];
 
-        for option in incremental_options {
-            match option {
-                Some(path) => assert!(!path.as_os_str().is_empty()),
-                None => (), // Incremental disabled
-            }
+        for path in incremental_options.into_iter().flatten() {
+            assert!(!path.as_os_str().is_empty())
         }
     }
 

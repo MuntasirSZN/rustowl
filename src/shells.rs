@@ -515,10 +515,13 @@ mod tests {
         for shell in shells {
             let shell_name = shell.to_string();
             assert!(!shell_name.is_empty(), "Shell {shell:?} should have a name");
-            
+
             // Test file name generation
             let filename = shell.file_name("test");
-            assert!(filename.contains("test"), "Filename should contain app name");
+            assert!(
+                filename.contains("test"),
+                "Filename should contain app name"
+            );
         }
     }
 
@@ -536,9 +539,9 @@ mod tests {
             ("powershell.exe", Some(Shell::PowerShell)), // Windows executable
             ("/snap/bin/nu", Some(Shell::Nushell)),
             ("/usr/local/bin/nushell", Some(Shell::Nushell)),
-            ("/bin/sh", None), // sh not supported
-            ("/bin/tcsh", None), // tcsh not supported
-            ("/bin/csh", None), // csh not supported
+            ("/bin/sh", None),      // sh not supported
+            ("/bin/tcsh", None),    // tcsh not supported
+            ("/bin/csh", None),     // csh not supported
             ("/usr/bin/ksh", None), // ksh not supported
         ];
 
@@ -550,7 +553,7 @@ mod tests {
             // Test that the path operations work correctly
             if let Some(file_stem) = path.file_stem() {
                 let stem_str = file_stem.to_string_lossy();
-                
+
                 // Verify our detection logic matches expectations
                 let manual_detection = match stem_str.as_ref() {
                     "bash" => Some(Shell::Bash),
@@ -561,8 +564,11 @@ mod tests {
                     "nu" | "nushell" => Some(Shell::Nushell),
                     _ => None,
                 };
-                
-                assert_eq!(detected, manual_detection, "Detection mismatch for: {stem_str}");
+
+                assert_eq!(
+                    detected, manual_detection,
+                    "Detection mismatch for: {stem_str}"
+                );
             }
         }
     }
@@ -580,7 +586,11 @@ mod tests {
             let display_str = variant.to_string();
             assert!(!display_str.is_empty());
             assert!(!display_str.contains(' '));
-            assert!(display_str.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_alphabetic()));
+            assert!(
+                display_str
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_alphabetic())
+            );
 
             // Test FromStr roundtrip
             let parsed = <Shell as std::str::FromStr>::from_str(&display_str).unwrap();
@@ -606,7 +616,7 @@ mod tests {
 
             // Test PartialEq
             assert_eq!(variant, variant);
-            
+
             // Test Eq (implicit)
             assert!(variant == variant);
 
@@ -647,9 +657,12 @@ mod tests {
         for (input, expected_error) in invalid_inputs {
             let result = <Shell as std::str::FromStr>::from_str(input);
             assert!(result.is_err(), "Should be error for input: '{input}'");
-            
+
             let error_msg = result.unwrap_err();
-            assert_eq!(error_msg, expected_error, "Error message mismatch for: '{input}'");
+            assert_eq!(
+                error_msg, expected_error,
+                "Error message mismatch for: '{input}'"
+            );
         }
     }
 
@@ -676,7 +689,7 @@ mod tests {
             shell.generate(&test_command, &mut buf);
 
             let content = String::from_utf8_lossy(&buf);
-            
+
             // Skip shells that don't produce output (some may have compatibility issues)
             if content.is_empty() {
                 continue;
@@ -707,7 +720,11 @@ mod tests {
             ("/usr/bin/bash", Some(Shell::Bash), "absolute path"),
             ("~/.local/bin/zsh", Some(Shell::Zsh), "home relative"),
             ("/opt/local/bin/fish", Some(Shell::Fish), "opt path"),
-            ("C:\\Program Files\\PowerShell\\7\\pwsh.exe", None, "pwsh not supported"),
+            (
+                "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+                None,
+                "pwsh not supported",
+            ),
             ("/usr/bin/bash-5.1", None, "version suffix"),
             ("/usr/bin/bash.old", Some(Shell::Bash), "backup suffix"), // file_stem removes .old
             ("powershell_ise.exe", Some(Shell::PowerShell), "ISE variant"),
@@ -756,7 +773,7 @@ mod tests {
 
         // Test parsing performance
         let valid_shells = ["bash", "zsh", "fish", "powershell", "elvish", "nushell"];
-        
+
         let start = Instant::now();
         for _ in 0..1000 {
             for shell_name in &valid_shells {

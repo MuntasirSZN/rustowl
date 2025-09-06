@@ -1359,7 +1359,7 @@ mod tests {
     #[test]
     fn test_range_arithmetic_comprehensive() {
         // Test comprehensive range arithmetic operations
-        let test_ranges = vec![
+        let test_ranges = [
             Range::new(Loc(0), Loc(10)).unwrap(),
             Range::new(Loc(5), Loc(15)).unwrap(),
             Range::new(Loc(20), Loc(30)).unwrap(),
@@ -1408,24 +1408,24 @@ mod tests {
     fn test_fn_local_edge_cases() {
         // Test FnLocal with various edge cases
         let edge_cases = vec![
-            (0, 0),           // Minimum values
-            (u32::MAX, 0),    // Maximum local ID
-            (0, u32::MAX),    // Maximum function ID
+            (0, 0),               // Minimum values
+            (u32::MAX, 0),        // Maximum local ID
+            (0, u32::MAX),        // Maximum function ID
             (u32::MAX, u32::MAX), // Both maximum
-            (12345, 67890),   // Arbitrary values
-            (1, 0),           // Local 1, function 0 (common case)
+            (12345, 67890),       // Arbitrary values
+            (1, 0),               // Local 1, function 0 (common case)
         ];
 
         for (local_id, fn_id) in edge_cases {
             let fn_local = FnLocal::new(local_id, fn_id);
-            
+
             assert_eq!(fn_local.id, local_id);
             assert_eq!(fn_local.fn_id, fn_id);
 
             // Test serialization
             let json = serde_json::to_string(&fn_local).unwrap();
             let deserialized: FnLocal = serde_json::from_str(&json).unwrap();
-            
+
             assert_eq!(fn_local.id, deserialized.id);
             assert_eq!(fn_local.fn_id, deserialized.fn_id);
 
@@ -1503,25 +1503,31 @@ mod tests {
         // Test SmallVec performance
         let start = Instant::now();
         let mut functions = smallvec::SmallVec::<[Function; 4]>::new();
-        
+
         for i in 0..1000 {
             functions.push(Function::new(i));
         }
 
         let smallvec_duration = start.elapsed();
-        assert!(smallvec_duration.as_millis() < 100, "SmallVec operations should be fast");
+        assert!(
+            smallvec_duration.as_millis() < 100,
+            "SmallVec operations should be fast"
+        );
         assert_eq!(functions.len(), 1000);
 
         // Test FoldIndexMap performance
         let start = Instant::now();
         let mut map: FoldIndexMap<u32, String> = FoldIndexMap::default();
-        
+
         for i in 0..1000 {
             map.insert(i, format!("value_{i}"));
         }
 
         let map_duration = start.elapsed();
-        assert!(map_duration.as_millis() < 100, "FoldIndexMap operations should be fast");
+        assert!(
+            map_duration.as_millis() < 100,
+            "FoldIndexMap operations should be fast"
+        );
         assert_eq!(map.len(), 1000);
 
         // Test lookups
@@ -1530,7 +1536,10 @@ mod tests {
             assert!(map.contains_key(&i));
         }
         let lookup_duration = start.elapsed();
-        assert!(lookup_duration.as_millis() < 50, "Lookups should be very fast");
+        assert!(
+            lookup_duration.as_millis() < 50,
+            "Lookups should be very fast"
+        );
     }
 
     #[test]
@@ -1562,15 +1571,24 @@ mod tests {
 
             let json1 = serde_json::to_string(&variable).unwrap();
             let json2 = serde_json::to_string(&variable).unwrap();
-            assert_eq!(json1, json2, "Variable serialization should be deterministic");
+            assert_eq!(
+                json1, json2,
+                "Variable serialization should be deterministic"
+            );
 
             let json1 = serde_json::to_string(&statement).unwrap();
             let json2 = serde_json::to_string(&statement).unwrap();
-            assert_eq!(json1, json2, "Statement serialization should be deterministic");
+            assert_eq!(
+                json1, json2,
+                "Statement serialization should be deterministic"
+            );
 
             let json1 = serde_json::to_string(&terminator).unwrap();
             let json2 = serde_json::to_string(&terminator).unwrap();
-            assert_eq!(json1, json2, "Terminator serialization should be deterministic");
+            assert_eq!(
+                json1, json2,
+                "Terminator serialization should be deterministic"
+            );
         }
     }
 
@@ -1582,15 +1600,24 @@ mod tests {
         // Test that core types have reasonable memory footprint
         let function = Function::new(0);
         let function_size = mem::size_of_val(&function);
-        assert!(function_size <= 8192, "Function should be compact: {function_size} bytes");
+        assert!(
+            function_size <= 8192,
+            "Function should be compact: {function_size} bytes"
+        );
 
         let range = Range::new(Loc(0), Loc(100)).unwrap();
         let range_size = mem::size_of_val(&range);
-        assert!(range_size <= 16, "Range should be compact: {range_size} bytes");
+        assert!(
+            range_size <= 16,
+            "Range should be compact: {range_size} bytes"
+        );
 
         let fn_local = FnLocal::new(0, 0);
         let fn_local_size = mem::size_of_val(&fn_local);
-        assert!(fn_local_size <= 16, "FnLocal should be compact: {fn_local_size} bytes");
+        assert!(
+            fn_local_size <= 16,
+            "FnLocal should be compact: {fn_local_size} bytes"
+        );
 
         // Test SmallVec doesn't allocate for small sizes
         let small_vec = smallvec::SmallVec::<[Function; 4]>::new();
@@ -1602,6 +1629,9 @@ mod tests {
         for i in 0..4 {
             small_vec.push(Function::new(i));
         }
-        assert!(!small_vec.spilled(), "Should not spill for small collections");
+        assert!(
+            !small_vec.spilled(),
+            "Should not spill for small collections"
+        );
     }
 }

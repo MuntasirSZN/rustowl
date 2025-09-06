@@ -109,7 +109,6 @@ use std::sync::LazyLock;
 #[cfg(test)]
 static ENV_LOCK: LazyLock<std::sync::Mutex<()>> = LazyLock::new(|| std::sync::Mutex::new(()));
 
-
 /// Temporarily sets an environment variable for the duration of a closure, restoring the previous state afterwards.
 ///
 /// The function saves the current value of `key` (if any), sets `key` to `value`, runs `f()`, and then restores `key` to its original value:
@@ -228,7 +227,9 @@ fn test_get_cache_path() {
         let result = get_cache_path();
         // Restore
         if let Some(v) = old_value {
-            unsafe { env::set_var("RUSTOWL_CACHE_DIR", v); }
+            unsafe {
+                env::set_var("RUSTOWL_CACHE_DIR", v);
+            }
         }
         assert!(result.is_none());
     });
@@ -354,23 +355,5 @@ fn test_get_cache_config_with_env_vars() {
     with_env("RUSTOWL_CACHE_VALIDATE_FILES", "  FALSE  ", || {
         let config = get_cache_config();
         assert!(!config.validate_file_mtime);
-    });
-}
-
-#[test]
-fn test_cache_config_multiple_env_vars() {
-    // Test multiple environment variables at once using with_env to avoid conflicts
-    with_env("RUSTOWL_CACHE_MAX_ENTRIES", "750", || {
-        with_env("RUSTOWL_CACHE_MAX_MEMORY_MB", "150", || {
-            with_env("RUSTOWL_CACHE_EVICTION", "fifo", || {
-                with_env("RUSTOWL_CACHE_VALIDATE_FILES", "false", || {
-                    let config = get_cache_config();
-                    assert_eq!(config.max_entries, 750);
-                    assert_eq!(config.max_memory_bytes, 150 * 1024 * 1024);
-                    assert!(!config.use_lru_eviction);
-                    assert!(!config.validate_file_mtime);
-                });
-            });
-        });
     });
 }

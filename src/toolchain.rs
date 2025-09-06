@@ -1014,10 +1014,10 @@ mod tests {
     fn test_complex_unicode_path_handling() {
         // Test with various Unicode path components
         let unicode_paths = [
-            "简体中文/rustowl",      // Simplified Chinese
+            "简体中文/rustowl",     // Simplified Chinese
             "русский/язык/path",    // Russian
             "العربية/المجلد",       // Arabic
-            "日本語/ディレクトリ",     // Japanese
+            "日本語/ディレクトリ",  // Japanese
             "🦀/rust/🔥/blazing",   // Emoji paths
             "café/résumé/naïve",    // Accented Latin
             "test/with spaces",     // Spaces
@@ -1031,11 +1031,11 @@ mod tests {
 
             // Operations should not panic
             assert!(sysroot.to_string_lossy().contains(TOOLCHAIN));
-            
+
             // Path should be constructible
             let path_str = sysroot.to_string_lossy();
             assert!(!path_str.is_empty());
-            
+
             // Should be able to join additional components
             let extended = sysroot.join("bin").join("rustc");
             assert!(extended.to_string_lossy().len() > sysroot.to_string_lossy().len());
@@ -1046,34 +1046,34 @@ mod tests {
     fn test_environment_variable_parsing_comprehensive() {
         // Test comprehensive environment variable parsing patterns
         use std::ffi::OsString;
-        
+
         // Test path splitting with various separators
         let test_cases = if cfg!(windows) {
             vec![
-                ("", 0),                                    // Empty
-                ("/usr/lib", 1),                           // Single path
-                ("/usr/lib:/lib", 2),                      // Unix style (still works on Windows)
-                ("/usr/lib:/lib:/usr/local/lib", 3),       // Multiple Unix
-                ("C:\\Windows\\System32", 1),              // Windows single
-                ("C:\\Windows\\System32;D:\\Tools", 2),    // Windows multiple
-                ("/path with spaces:/another path", 2),    // Spaces
-                ("/path/with/unicode/测试:/another", 2),    // Unicode
+                ("", 0),                                 // Empty
+                ("/usr/lib", 1),                         // Single path
+                ("/usr/lib:/lib", 2),                    // Unix style (still works on Windows)
+                ("/usr/lib:/lib:/usr/local/lib", 3),     // Multiple Unix
+                ("C:\\Windows\\System32", 1),            // Windows single
+                ("C:\\Windows\\System32;D:\\Tools", 2),  // Windows multiple
+                ("/path with spaces:/another path", 2),  // Spaces
+                ("/path/with/unicode/测试:/another", 2), // Unicode
             ]
         } else {
             vec![
-                ("", 0),                                    // Empty
-                ("/usr/lib", 1),                           // Single path
-                ("/usr/lib:/lib", 2),                      // Unix style
-                ("/usr/lib:/lib:/usr/local/lib", 3),       // Multiple Unix
-                ("/usr/lib;/lib", 1),                      // Windows separator ignored on Unix
-                ("/path with spaces:/another path", 2),    // Spaces
-                ("/path/with/unicode/测试:/another", 2),    // Unicode
+                ("", 0),                                 // Empty
+                ("/usr/lib", 1),                         // Single path
+                ("/usr/lib:/lib", 2),                    // Unix style
+                ("/usr/lib:/lib:/usr/local/lib", 3),     // Multiple Unix
+                ("/usr/lib;/lib", 1),                    // Windows separator ignored on Unix
+                ("/path with spaces:/another path", 2),  // Spaces
+                ("/path/with/unicode/测试:/another", 2), // Unicode
             ]
         };
 
         for (path_str, expected_count) in test_cases {
             let paths: Vec<PathBuf> = std::env::split_paths(&OsString::from(path_str)).collect();
-            
+
             if expected_count == 0 {
                 assert!(paths.is_empty() || paths.len() == 1); // Empty string might yield one empty path
             } else {
@@ -1148,15 +1148,15 @@ mod tests {
         ];
 
         for (filename, expected_format) in archive_formats {
-            let extension = filename.split('.').last().unwrap_or("");
+            let extension = filename.split('.').next_back().unwrap_or("");
             let is_compressed = matches!(extension, "gz" | "xz" | "bz2" | "zip" | "7z");
-            
+
             if expected_format.contains("tar") {
                 assert!(filename.contains("tar"));
             }
-            
+
             assert!(is_compressed, "Should detect compression for: {filename}");
-            
+
             // Test platform-specific format preferences
             #[cfg(target_os = "windows")]
             {
@@ -1164,7 +1164,7 @@ mod tests {
                     assert!(filename.ends_with(".zip") || filename.ends_with(".exe"));
                 }
             }
-            
+
             #[cfg(not(target_os = "windows"))]
             {
                 if filename.contains("linux") || filename.contains("darwin") {
@@ -1193,22 +1193,22 @@ mod tests {
         ];
 
         let invalid_components = [
-            "",                    // Empty
-            " ",                   // Space only
-            "rust std",            // Space in name
-            "rust\nstd",          // Newline
-            "rust\tstd",          // Tab
-            "rust/std",           // Slash
-            "rust\\std",          // Backslash
-            "rust?std",           // Question mark
-            "rust#std",           // Hash
-            "rust@std",           // At symbol
-            "rust%std",           // Percent
-            "rust std ",          // Trailing space
-            " rust-std",          // Leading space
-            "rust--std",          // Double dash
-            "rust-",              // Trailing dash
-            "-rust",              // Leading dash
+            "",          // Empty
+            " ",         // Space only
+            "rust std",  // Space in name
+            "rust\nstd", // Newline
+            "rust\tstd", // Tab
+            "rust/std",  // Slash
+            "rust\\std", // Backslash
+            "rust?std",  // Question mark
+            "rust#std",  // Hash
+            "rust@std",  // At symbol
+            "rust%std",  // Percent
+            "rust std ", // Trailing space
+            " rust-std", // Leading space
+            "rust--std", // Double dash
+            "rust-",     // Trailing dash
+            "-rust",     // Leading dash
         ];
 
         for component in valid_components {
@@ -1223,7 +1223,11 @@ mod tests {
             assert!(!component.contains("--"));
 
             // Should be ASCII alphanumeric with hyphens and digits
-            assert!(component.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+            assert!(
+                component
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-')
+            );
         }
 
         for component in invalid_components {
@@ -1240,7 +1244,7 @@ mod tests {
                 || component.starts_with('-')
                 || component.ends_with('-')
                 || component.contains("--");
-            
+
             assert!(is_invalid, "Component should be invalid: '{component}'");
         }
     }
@@ -1263,14 +1267,18 @@ mod tests {
             let mut total_received = 0;
             let mut last_reported = 0;
 
-            let effective_length = if content_length == 0 { 200_000_000 } else { content_length };
+            let effective_length = if content_length == 0 {
+                200_000_000
+            } else {
+                content_length
+            };
 
             for chunk_size in chunks {
                 total_received += chunk_size;
                 // Ensure we don't calculate progress above 100%
                 let capped_received = std::cmp::min(total_received, effective_length);
                 let current_progress = (capped_received * 100) / effective_length;
-                
+
                 if last_reported != current_progress {
                     progress_points.push(current_progress);
                     last_reported = current_progress;
@@ -1294,16 +1302,20 @@ mod tests {
         // Test path prefix stripping with various edge cases
         let test_cases = [
             // (full_path, base_path, should_succeed)
-            ("/opt/rustowl/component/lib/file.so", "/opt/rustowl/component", true),
+            (
+                "/opt/rustowl/component/lib/file.so",
+                "/opt/rustowl/component",
+                true,
+            ),
             ("/opt/rustowl/component", "/opt/rustowl/component", true), // Exact match
-            ("/opt/rustowl", "/opt/rustowl/component", false), // Base is longer
-            ("/different/path", "/opt/rustowl", false), // Completely different
-            ("", "", true), // Both empty
-            ("relative/path", "relative", true), // Relative paths
-            ("/", "/", true), // Root paths
-            ("/a/b/c", "/a/b", true), // Simple case
-            ("./local/path", "./local", true), // Current directory
-            ("../parent/path", "../parent", true), // Parent directory
+            ("/opt/rustowl", "/opt/rustowl/component", false),          // Base is longer
+            ("/different/path", "/opt/rustowl", false),                 // Completely different
+            ("", "", true),                                             // Both empty
+            ("relative/path", "relative", true),                        // Relative paths
+            ("/", "/", true),                                           // Root paths
+            ("/a/b/c", "/a/b", true),                                   // Simple case
+            ("./local/path", "./local", true),                          // Current directory
+            ("../parent/path", "../parent", true),                      // Parent directory
         ];
 
         for (full_path_str, base_path_str, should_succeed) in test_cases {
@@ -1313,15 +1325,24 @@ mod tests {
             let result = full_path.strip_prefix(&base_path);
 
             if should_succeed {
-                assert!(result.is_ok(), "Should succeed: '{full_path_str}' - '{base_path_str}'");
-                
+                assert!(
+                    result.is_ok(),
+                    "Should succeed: '{full_path_str}' - '{base_path_str}'"
+                );
+
                 if let Ok(relative) = result {
                     // Verify the relative path makes sense
                     let reconstructed = base_path.join(relative);
-                    assert_eq!(reconstructed, full_path, "Reconstruction should match original");
+                    assert_eq!(
+                        reconstructed, full_path,
+                        "Reconstruction should match original"
+                    );
                 }
             } else {
-                assert!(result.is_err(), "Should fail: '{full_path_str}' - '{base_path_str}'");
+                assert!(
+                    result.is_err(),
+                    "Should fail: '{full_path_str}' - '{base_path_str}'"
+                );
             }
         }
     }
@@ -1372,8 +1393,8 @@ mod tests {
     #[test]
     fn test_complex_directory_structures() {
         // Test handling of complex directory structures
-        use tempfile::tempdir;
         use std::fs;
+        use tempfile::tempdir;
 
         let temp_dir = tempdir().unwrap();
         let temp_path = temp_dir.path();
@@ -1461,9 +1482,9 @@ mod tests {
             assert!(github_url.contains(HOST_TUPLE));
 
             // Test version components
-            let parts: Vec<&str> = version.split(|c| c == '.' || c == '-' || c == '+').collect();
+            let parts: Vec<&str> = version.split(['.', '-', '+']).collect();
             assert!(!parts.is_empty());
-            
+
             // First part should be a number
             if let Ok(major) = parts[0].parse::<u32>() {
                 assert!(major < 1000, "Major version should be reasonable");
@@ -1478,9 +1499,12 @@ mod tests {
 
         // Test many path operations don't cause excessive allocations
         for i in 0..100 {
-            let extended = base_path.join(format!("component_{i}")).join("subdir").join("file.txt");
+            let extended = base_path
+                .join(format!("component_{i}"))
+                .join("subdir")
+                .join("file.txt");
             assert!(extended.starts_with(&base_path));
-            
+
             // Test string operations
             let path_str = extended.to_string_lossy();
             assert!(path_str.contains("component_"));
@@ -1491,9 +1515,15 @@ mod tests {
         for length in [1, 10, 100, 1000] {
             let long_component = "x".repeat(length);
             let path_with_long_component = base_path.join(&long_component);
-            
-            assert_eq!(path_with_long_component.file_name().unwrap(), &*long_component);
-            assert!(path_with_long_component.to_string_lossy().len() > base_path.to_string_lossy().len());
+
+            assert_eq!(
+                path_with_long_component.file_name().unwrap(),
+                &*long_component
+            );
+            assert!(
+                path_with_long_component.to_string_lossy().len()
+                    > base_path.to_string_lossy().len()
+            );
         }
     }
 }
