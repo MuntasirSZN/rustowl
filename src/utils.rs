@@ -744,37 +744,6 @@ mod tests {
         }
     }
 
-    impl MirVisitor for DetailedVisitor {
--        fn visit_func(&mut self, func: &Function) {
--            self.functions_visited += 1;
--
--            // Visit all basic blocks in the function
--            for bb in &func.basic_blocks {
--                self.basic_blocks_visited += 1;
--
--                // Visit statements in the basic block
--                for stmt in &bb.statements {
--                    self.visit_stmt(stmt);
--                }
--            }
-        fn visit_func(&mut self, _func: &Function) {
-            self.functions_visited += 1;
-        }
-
-        fn visit_stmt(&mut self, _stmt: &MirStatement) {
-            self.statements_visited += 1;
-        }
-    }
-
-    // ...
-
-    mir_visit(&function, &mut visitor);
-
-    assert_eq!(visitor.functions_visited, 1);
--   assert_eq!(visitor.statements_visited, 12); // Adjust based on actual behavior
-   assert_eq!(visitor.statements_visited, 6);  // 3 blocks * 2 statements (visited by mir_visit)
-   assert_eq!(visitor.basic_blocks_visited, 0); // This visitor doesn't count BBs; mir_visit doesn't call such a hook
-
     #[test]
     fn test_range_arithmetic_edge_cases() {
         // Test range arithmetic with edge cases
