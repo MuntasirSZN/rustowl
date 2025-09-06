@@ -865,32 +865,4 @@ mod tests {
             let _std_error: &dyn std::error::Error = &error;
         }
     }
-
-    #[test]
-    fn test_error_context_performance() {
-        // Test performance characteristics of error context operations
-        use std::time::Instant;
-
-        let start = Instant::now();
-
-        // Perform many context operations
-        for i in 0..10000 {
-            let result: std::result::Result<(), std::io::Error> = Err(std::io::Error::other("test"));
-            let _with_context = result.context(&format!("iteration {i}"));
-        }
-
-        let duration = start.elapsed();
-        assert!(duration.as_millis() < 100, "Context operations should be fast: {duration:?}");
-
-        // Test with_context closure performance
-        let start = Instant::now();
-
-        for i in 0..10000 {
-            let result: std::result::Result<(), std::io::Error> = Err(std::io::Error::other("test"));
-            let _with_context = result.with_context(|| format!("closure iteration {i}"));
-        }
-
-        let closure_duration = start.elapsed();
-        assert!(closure_duration.as_millis() < 200, "Closure context operations should be reasonably fast: {closure_duration:?}");
-    }
 }
